@@ -37,6 +37,7 @@ audio:
 weather:
   api-key: ${SENIVERSE_API_KEY:}
   api-url: ${SENIVERSE_API_URL:https://api.seniverse.com/v3/weather/now.json}
+  forecast-api-url: ${SENIVERSE_FORECAST_API_URL:https://api.seniverse.com/v3/weather/daily.json}
 
 rag:
   enabled: ${RAG_ENABLED:true}

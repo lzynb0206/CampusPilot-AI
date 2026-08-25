@@ -10,4 +10,5 @@ import org.springframework.stereotype.Component;
 public class WeatherConfig {
     private String apiKey;
     private String apiUrl = "https://api.seniverse.com/v3/weather/now.json";
+    private String forecastApiUrl = "https://api.seniverse.com/v3/weather/daily.json";
 }

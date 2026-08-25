@@ -1,30 +1,40 @@
 package com.example.demo.service.weather;
 
 import com.example.demo.config.WeatherConfig;
+import com.example.demo.model.DailyWeatherForecast;
 import com.example.demo.model.WeatherInfo;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
 
+import java.math.BigDecimal;
 import java.net.URI;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.LinkedHashSet;
+import java.util.Optional;
 import java.util.Set;
 
 @Service
-public class WeatherService {
+public class WeatherService implements WeatherForecastProvider {
     private final WeatherConfig config;
     private final ObjectMapper objectMapper;
     private final RestTemplate restTemplate;
 
+    @Autowired
     public WeatherService(WeatherConfig config) {
+        this(config, new RestTemplate());
+    }
+
+    WeatherService(WeatherConfig config, RestTemplate restTemplate) {
         this.config = config;
         this.objectMapper = new ObjectMapper();
-        this.restTemplate = new RestTemplate();
+        this.restTemplate = restTemplate;
     }
 
     public WeatherInfo getCurrentWeather(String location) {
@@ -46,6 +56,29 @@ public class WeatherService {
         throw new IllegalArgumentException(
                 "找不到地点“" + location + "”，请只输入具体城市或区县，例如：张家港天气怎么样。",
                 lastNotFound);
+    }
+
+    @Override
+    public Optional<DailyWeatherForecast> getDailyForecast(
+            String location, LocalDate targetDate) {
+        requireConfiguredApiKey();
+        if (!StringUtils.hasText(location)) {
+            throw new IllegalArgumentException("天气预报地点不能为空");
+        }
+        if (targetDate == null) {
+            throw new IllegalArgumentException("天气预报日期不能为空");
+        }
+
+        HttpClientErrorException.NotFound lastNotFound = null;
+        for (String candidate : locationCandidates(location)) {
+            try {
+                return requestDailyForecast(candidate, targetDate);
+            } catch (HttpClientErrorException.NotFound exception) {
+                lastNotFound = exception;
+            }
+        }
+        throw new IllegalArgumentException(
+                "找不到地点“" + location + "”，请只输入具体城市或区县。", lastNotFound);
     }
 
     private WeatherInfo requestCurrentWeather(String location) {
@@ -77,6 +110,78 @@ public class WeatherService {
             throw exception;
         } catch (Exception exception) {
             throw new IllegalStateException("无法解析心知天气响应", exception);
+        }
+    }
+
+    private Optional<DailyWeatherForecast> requestDailyForecast(
+            String location, LocalDate targetDate) {
+        URI uri = UriComponentsBuilder.fromUriString(config.getForecastApiUrl())
+                .queryParam("key", config.getApiKey())
+                .queryParam("location", location)
+                .queryParam("language", "zh-Hans")
+                .queryParam("unit", "c")
+                .queryParam("start", 0)
+                .build()
+                .encode()
+                .toUri();
+        String response = restTemplate.getForObject(uri, String.class);
+        return parseDailyForecast(response, location, targetDate);
+    }
+
+    Optional<DailyWeatherForecast> parseDailyForecast(
+            String response, String requestedLocation, LocalDate targetDate) {
+        try {
+            JsonNode result = objectMapper.readTree(response).path("results").path(0);
+            if (result.isMissingNode() || result.isEmpty()) {
+                throw new IllegalStateException("心知天气没有返回该地区的逐日预报数据");
+            }
+            String city = result.path("location").path("name").asText(requestedLocation);
+            String lastUpdateText = result.path("last_update").asText();
+            OffsetDateTime lastUpdate = StringUtils.hasText(lastUpdateText)
+                    ? OffsetDateTime.parse(lastUpdateText)
+                    : null;
+            for (JsonNode daily : result.path("daily")) {
+                if (targetDate.toString().equals(daily.path("date").asText())) {
+                    return Optional.of(new DailyWeatherForecast(
+                            city,
+                            targetDate,
+                            optionalText(daily, "text_day"),
+                            optionalText(daily, "text_night"),
+                            optionalInteger(daily, "high"),
+                            optionalInteger(daily, "low"),
+                            optionalDecimal(daily, "rainfall"),
+                            optionalInteger(daily, "humidity"),
+                            optionalText(daily, "wind_direction"),
+                            optionalText(daily, "wind_scale"),
+                            lastUpdate));
+                }
+            }
+            return Optional.empty();
+        } catch (IllegalStateException exception) {
+            throw exception;
+        } catch (Exception exception) {
+            throw new IllegalStateException("无法解析心知天气逐日预报响应", exception);
+        }
+    }
+
+    private String optionalText(JsonNode node, String field) {
+        String value = node.path(field).asText();
+        return StringUtils.hasText(value) ? value : null;
+    }
+
+    private Integer optionalInteger(JsonNode node, String field) {
+        String value = optionalText(node, field);
+        return value == null ? null : Integer.valueOf(value);
+    }
+
+    private BigDecimal optionalDecimal(JsonNode node, String field) {
+        String value = optionalText(node, field);
+        return value == null ? null : new BigDecimal(value);
+    }
+
+    private void requireConfiguredApiKey() {
+        if (!StringUtils.hasText(config.getApiKey())) {
+            throw new IllegalStateException("请先配置 SENIVERSE_API_KEY");
         }
     }
 
