@@ -1,0 +1,50 @@
+spring:
+  application:
+    name: Demo
+  config:
+    import: optional:classpath:application-local.yml
+
+logging:
+  level:
+    root: INFO
+
+wechat:
+  bot:
+    enabled: ${WECHAT_BOT_ENABLED:true}
+    download-dir: ${WECHAT_DOWNLOAD_DIR:downloads}
+    qr-code-path: ${WECHAT_QR_CODE_PATH:wechat-login-qr.png}
+
+dashscope:
+  api-key: ${DASHSCOPE_API_KEY:}
+  compatible-api-url: ${DASHSCOPE_COMPATIBLE_API_URL:https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions}
+  api-url: ${DASHSCOPE_API_URL:https://dashscope.aliyuncs.com/api/v1}
+  chat-model: ${DASHSCOPE_CHAT_MODEL:qwen-flash}
+  intent-model: ${DASHSCOPE_INTENT_MODEL:qwen-flash}
+  search-model: ${DASHSCOPE_SEARCH_MODEL:qwen-plus}
+  translation-model: ${DASHSCOPE_TRANSLATION_MODEL:qwen-mt-flash}
+  vision-model: ${DASHSCOPE_VISION_MODEL:qwen3-vl-flash}
+  image-model: ${DASHSCOPE_IMAGE_MODEL:qwen-image-2.0}
+  asr-model: ${DASHSCOPE_ASR_MODEL:qwen3-asr-flash}
+  tts-model: ${DASHSCOPE_TTS_MODEL:cosyvoice-v3-flash}
+  tts-voice: ${DASHSCOPE_TTS_VOICE:longanyang}
+
+audio:
+  node-executable: ${NODE_EXECUTABLE:node}
+  silk-decoder-script: ${SILK_DECODER_SCRIPT:scripts/decode-silk.mjs}
+  sample-rate: ${SILK_SAMPLE_RATE:24000}
+  decode-timeout-seconds: ${SILK_DECODE_TIMEOUT_SECONDS:30}
+
+weather:
+  api-key: ${SENIVERSE_API_KEY:}
+  api-url: ${SENIVERSE_API_URL:https://api.seniverse.com/v3/weather/now.json}
+
+rag:
+  enabled: ${RAG_ENABLED:true}
+  knowledge-base: ${RAG_KNOWLEDGE_BASE:classpath:rag/knowledge-base.json}
+  max-results: ${RAG_MAX_RESULTS:3}
+
+skills:
+  daily-brief:
+    default-location: ${DAILY_BRIEF_DEFAULT_LOCATION:北京}
+    default-news-topic: ${DAILY_BRIEF_DEFAULT_NEWS_TOPIC:人工智能}
+    news-limit: ${DAILY_BRIEF_NEWS_LIMIT:3}

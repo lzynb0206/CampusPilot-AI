@@ -1,0 +1,66 @@
+[
+  {
+    "id": "rag-basics",
+    "title": "RAG 基础与本项目实现",
+    "keywords": ["RAG", "检索增强生成", "知识库", "关键词检索", "增强Prompt"],
+    "content": "RAG 是 Retrieval-Augmented Generation（检索增强生成）。它先根据用户问题从外部知识库检索相关资料，再把资料与问题一起交给大模型生成答案。本项目实现的是极简关键词检索：对本地 JSON 文档的 keywords 进行包含匹配和评分，命中后把排名靠前的知识片段注入 Prompt。它不使用向量数据库和 Embedding，适合教学与小型固定知识库，但无法理解同义词和复杂语义。",
+    "source": "README.md 与 KeywordRagService.java",
+    "status": "VERIFIED"
+  },
+  {
+    "id": "skill-and-tool",
+    "title": "Skill 与 Tool 的区别",
+    "keywords": ["Skill", "技能路由", "自定义技能", "Tool", "工具类", "Function Calling"],
+    "content": "Tool 是一个原子能力，例如查询天气、翻译或计算，通常由大模型通过 Function Calling 选择和填写参数。Skill 是一个可直接匹配、可复用的完整业务流程，可以组合多个 Tool、固定执行顺序并规定输出格式。本项目的每日简报 Skill 在关键词命中后直接编排天气与新闻工具，不需要大模型先判断应该调用哪些工具，因此行为更稳定、成本更可控。Skill 并不是 Tool 的替代品：稳定高频流程适合 Skill，开放式任务仍适合由模型选择 Tool。",
+    "source": "README.md、DailyBriefSkill.java 与 ToolCallingEngine.java",
+    "status": "VERIFIED"
+  },
+  {
+    "id": "project-configuration",
+    "title": "项目 API Key 与启动配置",
+    "keywords": ["API Key", "DASHSCOPE_API_KEY", "SENIVERSE_API_KEY", "怎么配置", "项目启动", "二维码"],
+    "content": "项目通过 DASHSCOPE_API_KEY 读取阿里云百炼密钥，通过 SENIVERSE_API_KEY 读取心知天气私钥。密钥应放在环境变量或被 Git 忽略的 application-local.yml 中，不能提交到 Git。先执行 npm install 和 npm run audio:check，再执行 ./mvnw clean test 与 ./mvnw spring-boot:run。微信登录二维码默认生成在项目根目录的 wechat-login-qr.png。",
+    "source": "README.md 与 application.yaml",
+    "status": "VERIFIED"
+  },
+  {
+    "id": "project-audio",
+    "title": "微信语音处理链路",
+    "keywords": ["SILK", "语音识别", "ASR", "语音合成", "TTS", "WAV", "silk-wasm"],
+    "content": "微信入站语音是 SILK。Java 把字节通过标准输入交给 Node.js，npm silk-wasm 将其解码为 PCM 并添加 WAV 文件头，然后 qwen3-asr-flash 把 WAV 识别成文字。回复语音使用 cosyvoice-v3-flash 生成 WAV，机器人把它作为微信文件发送，不发送语音气泡。解码过程使用内存和进程管道，不保存 SILK、PCM 或 WAV 临时文件。",
+    "source": "README.md、AudioTranscoder.java 与 WechatBotService.java",
+    "status": "VERIFIED"
+  },
+  {
+    "id": "campus-activity-approval-template",
+    "title": "校园活动申请流程（演示模板）",
+    "keywords": ["校园活动", "活动审批", "活动申请", "校园分享会", "技术分享会", "AI分享会"],
+    "content": "演示流程建议：活动负责人先确认主办方、日期、人数、场地和预算，再准备活动方案与安全预案，提交给对应管理部门审核；收到明确批准后才能开展需要审批的线下活动。此内容仅用于演示 Agent 的检索和规划能力，不代表任何学校的正式制度，真实项目必须替换为所在学校发布的有效文件。",
+    "source": "CampusPilot 演示知识模板，待替换为本校正式活动管理制度",
+    "status": "TEMPLATE"
+  },
+  {
+    "id": "campus-venue-safety-template",
+    "title": "校园场地与安全检查（演示模板）",
+    "keywords": ["校园活动", "活动场地", "教室申请", "报告厅", "消防通道", "用电安全", "场地安全"],
+    "content": "演示检查项：场地容量应覆盖参与人数；不得占用消防通道；临时用电、扩音和投影设备应提前确认；现场应设置签到、秩序维护和紧急联系人。此清单不是具体学校的正式规定，场地开放时间、审批层级和设备限制必须以本校文件及场地方确认为准。",
+    "source": "CampusPilot 演示知识模板，待替换为本校场地与安全制度",
+    "status": "TEMPLATE"
+  },
+  {
+    "id": "campus-expense-template",
+    "title": "校园活动经费检查（演示模板）",
+    "keywords": ["校园活动", "活动预算", "活动经费", "经费报销", "发票", "备用金"],
+    "content": "演示检查项：预算应列出分项金额、数量、单价、合计和备用金；发生采购前确认可报销范围、票据类型和审批人；最终费用不得超过已批准预算。具体报销科目、比例和票据要求必须查询本校财务制度，本模板不能作为报销依据。",
+    "source": "CampusPilot 演示知识模板，待替换为本校财务与报销制度",
+    "status": "TEMPLATE"
+  },
+  {
+    "id": "campus-registration-privacy-template",
+    "title": "活动报名与个人信息保护（演示模板）",
+    "keywords": ["校园活动", "活动报名", "报名表", "个人信息", "手机号", "隐私保护"],
+    "content": "报名信息遵循必要性原则：只收集完成活动组织所需的字段，说明用途和保存期限，限制访问人员，活动结束后按组织要求处理数据。涉及手机号、证件信息、照片或录像时应单独提示。真实处理方式必须遵守适用法律和学校制度，本条仅为演示检查清单。",
+    "source": "CampusPilot 演示知识模板，待替换为适用法律说明与本校数据制度",
+    "status": "TEMPLATE"
+  }
+]
