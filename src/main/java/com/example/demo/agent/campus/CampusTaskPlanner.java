@@ -2,6 +2,9 @@ package com.example.demo.agent.campus;
 
 import java.util.List;
 
+import org.springframework.stereotype.Component;
+
+@Component
 public class CampusTaskPlanner {
     public CampusAgentPlan createPlan(CampusEventGoal goal) {
         if (goal == null) {
@@ -45,4 +48,3 @@ public class CampusTaskPlanner {
         return new AgentTask(id, title, capability, dependsOn, expectedOutput);
     }
 }
-

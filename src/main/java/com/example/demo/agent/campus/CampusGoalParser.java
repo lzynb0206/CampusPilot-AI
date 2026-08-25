@@ -8,6 +8,9 @@ import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import org.springframework.stereotype.Component;
+
+@Component
 public class CampusGoalParser {
     private static final Pattern DATE = Pattern.compile(
             "(?<!\\d)(\\d{4})\\s*[年./-]\\s*(\\d{1,2})\\s*[月./-]\\s*(\\d{1,2})\\s*日?");
@@ -102,4 +105,3 @@ public class CampusGoalParser {
         }
     }
 }
-
