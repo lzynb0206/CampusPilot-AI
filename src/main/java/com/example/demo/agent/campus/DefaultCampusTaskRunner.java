@@ -10,12 +10,15 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.springframework.stereotype.Component;
 
+import java.time.LocalTime;
+import java.time.format.DateTimeFormatter;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 @Component
 public class DefaultCampusTaskRunner implements CampusTaskRunner {
+    private static final DateTimeFormatter TIME_FORMAT = DateTimeFormatter.ofPattern("HH:mm");
     private static final List<String> RULE_QUERIES = List.of(
             "校园活动 活动审批 活动申请",
             "校园活动 活动场地 消防通道 用电安全",
@@ -42,7 +45,8 @@ public class DefaultCampusTaskRunner implements CampusTaskRunner {
             case "match_venue" -> matchVenue(context.goal());
             case "design_agenda" -> designAgenda();
             case "plan_staffing" -> planStaffing(context.goal());
-            case "allocate_budget" -> allocateBudget(context.goal());
+            case "estimate_supplies" -> estimateSupplies(context);
+            case "allocate_budget" -> allocateBudget(context);
             case "generate_materials" -> generateMaterials(context.goal());
             case "assess_risks" -> assessRisks(context);
             case "assemble_proposal" -> assembleStructuredProposal(context);
@@ -130,16 +134,20 @@ public class DefaultCampusTaskRunner implements CampusTaskRunner {
     }
 
     private JsonNode designAgenda() {
+        LocalTime proposedStart = LocalTime.of(14, 0);
         ObjectNode result = objectMapper.createObjectNode();
         result.put("duration_minutes", 120);
-        result.put("time_basis", "相对活动开始时间；具体开始时间待确认");
+        result.put("schedule_status", "PROPOSED_TIME_PENDING_CONFIRMATION");
+        result.put("proposed_start_time", proposedStart.format(TIME_FORMAT));
+        result.put("proposed_end_time", proposedStart.plusMinutes(120).format(TIME_FORMAT));
+        result.put("time_basis", "建议14:00—16:00，属于可执行草案，不代表场地档期已确认");
         ArrayNode items = result.putArray("items");
-        addAgendaItem(items, 0, 15, "签到与设备检查");
-        addAgendaItem(items, 15, 25, "主持开场与安全提示");
-        addAgendaItem(items, 25, 75, "AI主题分享");
-        addAgendaItem(items, 75, 95, "问答与互动");
-        addAgendaItem(items, 95, 110, "自由交流与反馈收集");
-        addAgendaItem(items, 110, 120, "总结、合影与有序离场");
+        addAgendaItem(items, proposedStart, 0, 15, "签到与设备检查", "签到负责人和技术支持");
+        addAgendaItem(items, proposedStart, 15, 25, "主持开场与安全提示", "主持人");
+        addAgendaItem(items, proposedStart, 25, 75, "技术主题分享", "分享嘉宾和技术支持");
+        addAgendaItem(items, proposedStart, 75, 95, "问答与互动", "主持人和分享嘉宾");
+        addAgendaItem(items, proposedStart, 95, 110, "自由交流与反馈收集", "引导人员");
+        addAgendaItem(items, proposedStart, 110, 120, "总结、合影与有序离场", "总负责人");
         return result;
     }
 
@@ -157,10 +165,22 @@ public class DefaultCampusTaskRunner implements CampusTaskRunner {
         return result;
     }
 
-    private JsonNode allocateBudget(CampusEventGoal goal) {
+    private JsonNode estimateSupplies(CampusExecutionContext context) {
+        JsonNode weather = context.requiredOutput("research_weather");
+        boolean hotWeather = weather.path("forecast_available").asBoolean()
+                && weather.path("forecast").path("high_celsius").asInt() >= 30;
+        ObjectNode arguments = objectMapper.createObjectNode();
+        arguments.put("participant_count", context.goal().participantCount());
+        arguments.put("hot_weather", hotWeather);
+        return executeJsonTool("estimate_event_supplies", arguments);
+    }
+
+    private JsonNode allocateBudget(CampusExecutionContext context) {
+        CampusEventGoal goal = context.goal();
         ObjectNode arguments = objectMapper.createObjectNode();
         arguments.put("total_budget", goal.budget());
         arguments.put("participant_count", goal.participantCount());
+        arguments.set("supply_items", context.requiredOutput("estimate_supplies").path("items"));
         return executeJsonTool("allocate_event_budget", arguments);
     }
 
@@ -209,7 +229,8 @@ public class DefaultCampusTaskRunner implements CampusTaskRunner {
                     "尚未完成真实场地预约", "人工确认档期、容量、设备和审批结果");
         }
         addRisk(risks, "BUDGET_PRICE_CHANGE", "MEDIUM",
-                "当前预算是比例建议而非真实报价", "采购前取得报价并保留应急备用金");
+                "当前单价是内部控制上限且尚未取得真实报价",
+                "按预算表逐项询价，用供应方、日期和报价替换控制上限");
         addRisk(risks, "PERSONAL_DATA", "MEDIUM",
                 "报名会收集联系方式", "遵循必要性原则并限制数据访问");
         result.put("risk_count", risks.size());
@@ -227,6 +248,7 @@ public class DefaultCampusTaskRunner implements CampusTaskRunner {
         copyOutput(sections, "venue", context, "match_venue");
         copyOutput(sections, "agenda", context, "design_agenda");
         copyOutput(sections, "staffing", context, "plan_staffing");
+        copyOutput(sections, "supplies", context, "estimate_supplies");
         copyOutput(sections, "budget", context, "allocate_budget");
         copyOutput(sections, "materials", context, "generate_materials");
         copyOutput(sections, "risks", context, "assess_risks");
@@ -245,11 +267,19 @@ public class DefaultCampusTaskRunner implements CampusTaskRunner {
     }
 
     private void addAgendaItem(
-            ArrayNode items, int startMinute, int endMinute, String activity) {
+            ArrayNode items,
+            LocalTime proposedStart,
+            int startMinute,
+            int endMinute,
+            String activity,
+            String ownerRole) {
         ObjectNode item = items.addObject();
         item.put("start_minute", startMinute);
         item.put("end_minute", endMinute);
+        item.put("start_time", proposedStart.plusMinutes(startMinute).format(TIME_FORMAT));
+        item.put("end_time", proposedStart.plusMinutes(endMinute).format(TIME_FORMAT));
         item.put("activity", activity);
+        item.put("owner_role", ownerRole);
     }
 
     private void addRole(ArrayNode roles, String role, int count, String responsibility) {
@@ -298,4 +328,3 @@ public class DefaultCampusTaskRunner implements CampusTaskRunner {
         }
     }
 }
-

@@ -19,6 +19,7 @@ public class CampusPlanEvaluator {
             "match_venue",
             "design_agenda",
             "plan_staffing",
+            "estimate_supplies",
             "allocate_budget",
             "generate_materials",
             "assess_risks");
@@ -71,10 +72,11 @@ public class CampusPlanEvaluator {
         }
 
         checkRules(byTaskId.get("retrieve_campus_rules").output(), issues);
-        checkWeather(byTaskId.get("research_weather").output(), issues);
+        checkWeather(goal, byTaskId.get("research_weather").output(), issues);
         checkVenue(goal, byTaskId.get("match_venue").output(), issues);
         checkNonEmptyArray(byTaskId, "design_agenda", "items", "AGENDA_EMPTY", issues);
         checkNonEmptyArray(byTaskId, "plan_staffing", "roles", "STAFFING_EMPTY", issues);
+        checkSupplies(byTaskId.get("estimate_supplies").output(), issues);
         checkBudget(goal, byTaskId.get("allocate_budget").output(), issues);
         checkMaterials(byTaskId.get("generate_materials").output(), issues);
         checkNonEmptyArray(byTaskId, "assess_risks", "items", "RISKS_EMPTY", issues);
@@ -109,9 +111,14 @@ public class CampusPlanEvaluator {
         }
     }
 
-    private void checkWeather(JsonNode output, List<CampusEvaluationIssue> issues) {
+    private void checkWeather(
+            CampusEventGoal goal, JsonNode output, List<CampusEvaluationIssue> issues) {
         String status = output.path("status").asText();
         boolean forecastAvailable = output.path("forecast_available").asBoolean();
+        if (!goal.eventDate().toString().equals(output.path("event_date").asText())) {
+            issues.add(error("WEATHER_DATE_MISMATCH", "research_weather",
+                    "天气评估日期与活动目标日期不一致", true));
+        }
         if (!WEATHER_STATUSES.contains(status)) {
             issues.add(error("WEATHER_STATUS_INVALID", "research_weather",
                     "天气评估缺少有效状态", true));
@@ -156,6 +163,23 @@ public class CampusPlanEvaluator {
         BigDecimal itemTotal = BigDecimal.ZERO;
         for (JsonNode item : output.path("items")) {
             itemTotal = itemTotal.add(item.path("amount").decimalValue());
+            if (item.path("item_name").asText().isBlank()
+                    || !item.path("quantity").isNumber()
+                    || item.path("unit").asText().isBlank()
+                    || !item.path("unit_price_cap").isNumber()
+                    || item.path("pricing_type").asText().isBlank()
+                    || item.path("source").asText().isBlank()
+                    || !item.has("requires_verification")) {
+                issues.add(error("BUDGET_DETAIL_INCOMPLETE", "allocate_budget",
+                        "预算条目缺少名称、数量、单位、单价上限、价格口径或来源", true));
+            }
+            BigDecimal calculated = item.path("quantity").decimalValue()
+                    .multiply(item.path("unit_price_cap").decimalValue())
+                    .setScale(2, java.math.RoundingMode.HALF_UP);
+            if (calculated.compareTo(item.path("amount").decimalValue()) != 0) {
+                issues.add(error("BUDGET_LINE_MISMATCH", "allocate_budget",
+                        "预算条目小计不等于数量×单价上限", true));
+            }
         }
         if (expected.compareTo(declaredTotal) != 0
                 || expected.compareTo(allocatedTotal) != 0
@@ -166,6 +190,22 @@ public class CampusPlanEvaluator {
         if (output.path("unallocated").decimalValue().compareTo(BigDecimal.ZERO) != 0) {
             issues.add(error("BUDGET_UNALLOCATED", "allocate_budget",
                     "预算存在未分配金额", true));
+        }
+        if (!"PLANNING_CAP_NOT_QUOTE".equals(output.path("pricing_status").asText())
+                || output.path("quote_obtained").asBoolean(true)) {
+            issues.add(error("BUDGET_PRICE_STATUS_INVALID", "allocate_budget",
+                    "预算必须明确标记为规划控制上限且尚未取得报价", true));
+        }
+    }
+
+    private void checkSupplies(JsonNode output, List<CampusEvaluationIssue> issues) {
+        if (!"INTERNAL_PLANNING_CAP".equals(output.path("status").asText())
+                || output.path("source").asText().isBlank()
+                || output.path("quote_obtained").asBoolean(true)
+                || !output.path("items").isArray()
+                || output.path("items").isEmpty()) {
+            issues.add(error("SUPPLY_ESTIMATE_INVALID", "estimate_supplies",
+                    "物资清单缺少控制上限状态、来源、报价状态或具体条目", true));
         }
     }
 
@@ -207,4 +247,3 @@ public class CampusPlanEvaluator {
                 code, CampusIssueSeverity.WARNING, taskId, message, false);
     }
 }
-

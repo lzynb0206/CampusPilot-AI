@@ -3,7 +3,10 @@ package com.example.demo.agent.campus;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
+import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneId;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -54,5 +57,30 @@ class CampusGoalParserTests {
         assertTrue(goal.validationIssues().getFirst().contains("日期无效"));
         assertFalse(goal.isReadyForExecution());
     }
-}
 
+    @Test
+    void resolvesTomorrowInShanghaiBusinessTimezone() {
+        CampusGoalParser fixedParser = new CampusGoalParser(Clock.fixed(
+                Instant.parse("2026-08-27T05:30:00Z"),
+                ZoneId.of("Asia/Shanghai")));
+
+        CampusEventGoal goal = fixedParser.parse(
+                "帮我策划一场明天在苏州举办、50人参加、预算2000元的技术分享会");
+
+        assertEquals(LocalDate.of(2026, 8, 28), goal.eventDate());
+        assertEquals("苏州", goal.city());
+        assertEquals("技术分享会", goal.eventName());
+        assertEquals(50, goal.participantCount());
+        assertTrue(goal.isReadyForExecution());
+    }
+
+    @Test
+    void parsesCommonChineseParticipantNumbers() {
+        CampusEventGoal goal = parser.parse(
+                "帮我策划一场2026年9月20日在苏州举办、两百零五人参加、预算2万元的技术分享会");
+
+        assertEquals(205, goal.participantCount());
+        assertEquals(new BigDecimal("20000"), goal.budget());
+        assertTrue(goal.isReadyForExecution());
+    }
+}

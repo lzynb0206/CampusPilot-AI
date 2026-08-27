@@ -13,6 +13,12 @@ import java.util.regex.Pattern;
 public class CampusPlanningAgentSkill implements BotSkill {
     private static final Pattern RESUME_COMMAND = Pattern.compile(
             "继续校园任务\\s*([a-fA-F0-9]{16})");
+    private static final Pattern DATE_SIGNAL = Pattern.compile(
+            "(?:今天|今日|明天|后天|\\d{4}\\s*[年./-]\\s*\\d{1,2}\\s*[月./-]\\s*\\d{1,2})");
+    private static final Pattern PARTICIPANT_SIGNAL = Pattern.compile(
+            "(?:\\d{1,6}|[零〇一二两三四五六七八九十百千万]{1,8})\\s*(?:人|位)");
+    private static final Pattern BUDGET_SIGNAL = Pattern.compile(
+            "预算[^，。；;]{0,20}\\d+(?:\\.\\d+)?\\s*(?:万)?\\s*(?:元|人民币)");
     private static final List<String> CAMPUS_SIGNALS = List.of("校园", "校内", "学校");
     private static final List<String> PLANNING_SIGNALS = List.of("策划", "规划", "组织", "举办");
     private static final List<String> EVENT_SIGNALS = List.of(
@@ -50,9 +56,13 @@ public class CampusPlanningAgentSkill implements BotSkill {
         if (normalized.startsWith("继续校园任务")) {
             return RESUME_COMMAND.matcher(userMessage).find();
         }
-        return containsAny(normalized, CAMPUS_SIGNALS)
-                && containsAny(normalized, PLANNING_SIGNALS)
+        boolean isPlanningRequest = containsAny(normalized, PLANNING_SIGNALS)
                 && containsAny(normalized, EVENT_SIGNALS);
+        boolean explicitCampus = containsAny(normalized, CAMPUS_SIGNALS);
+        boolean completeActivityGoal = DATE_SIGNAL.matcher(normalized).find()
+                && PARTICIPANT_SIGNAL.matcher(normalized).find()
+                && BUDGET_SIGNAL.matcher(normalized).find();
+        return isPlanningRequest && (explicitCampus || completeActivityGoal);
     }
 
     @Override

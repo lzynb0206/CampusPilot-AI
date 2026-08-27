@@ -19,7 +19,7 @@ class CampusTaskPlannerTests {
 
         CampusAgentPlan plan = new CampusTaskPlanner().createPlan(goal);
 
-        assertEquals(11, plan.tasks().size());
+        assertEquals(12, plan.tasks().size());
         Set<TaskCapability> capabilities = plan.tasks().stream()
                 .map(AgentTask::capability)
                 .collect(Collectors.toSet());

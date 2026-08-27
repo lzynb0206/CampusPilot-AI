@@ -1,29 +1,43 @@
 package com.example.demo.agent.campus;
 
 import java.math.BigDecimal;
+import java.time.Clock;
 import java.time.DateTimeException;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 @Component
 public class CampusGoalParser {
+    private static final ZoneId BUSINESS_ZONE = ZoneId.of("Asia/Shanghai");
     private static final Pattern DATE = Pattern.compile(
             "(?<!\\d)(\\d{4})\\s*[年./-]\\s*(\\d{1,2})\\s*[月./-]\\s*(\\d{1,2})\\s*日?");
     private static final Pattern CITY = Pattern.compile(
             "(?:在|地点\\s*[=：:]\\s*)([\\p{IsHan}]{2,20}?)(?:市)?(?:举办|举行|开展|组织)");
     private static final Pattern PARTICIPANT_COUNT = Pattern.compile(
-            "(?<!\\d)(\\d{1,6})\\s*(?:人|位)(?:参加|参与|规模)?");
+            "(?<!\\d)(\\d{1,6}|[零〇一二两三四五六七八九十百千万]{1,8})\\s*(?:人|位)(?:参加|参与|规模)?");
     private static final Pattern BUDGET = Pattern.compile(
             "预算(?:为|是|约|大约|不超过|控制在)?\\s*[=：:]?\\s*(\\d+(?:\\.\\d+)?)\\s*(万)?\\s*(?:元|人民币)");
     private static final Pattern EXPLICIT_EVENT_NAME = Pattern.compile(
             "(?:活动名称|活动主题|名称|主题)\\s*[=：:]\\s*([^，。；;]{2,60})");
     private static final Pattern EVENT_NAME_AFTER_BUDGET = Pattern.compile(
             "(?:元|人民币)\\s*的?\\s*([^，。；;]{2,60}?(?:分享会|活动|讲座|比赛|论坛|晚会|展览|沙龙|会议|团建))");
+    private final Clock clock;
+
+    @Autowired
+    public CampusGoalParser() {
+        this(Clock.system(BUSINESS_ZONE));
+    }
+
+    public CampusGoalParser(Clock clock) {
+        this.clock = clock;
+    }
 
     public CampusEventGoal parse(String rawGoal) {
         if (rawGoal == null || rawGoal.isBlank()) {
@@ -35,7 +49,7 @@ public class CampusGoalParser {
         String eventName = extractEventName(goal);
         LocalDate eventDate = extractDate(goal, validationIssues);
         String city = firstGroup(CITY, goal);
-        Integer participantCount = extractInteger(PARTICIPANT_COUNT, goal);
+        Integer participantCount = extractParticipantCount(goal, validationIssues);
         BigDecimal budget = extractBudget(goal);
 
         List<String> missingFields = new ArrayList<>();
@@ -58,18 +72,28 @@ public class CampusGoalParser {
 
     private LocalDate extractDate(String goal, List<String> validationIssues) {
         Matcher matcher = DATE.matcher(goal);
-        if (!matcher.find()) {
-            return null;
+        if (matcher.find()) {
+            int year = Integer.parseInt(matcher.group(1));
+            int month = Integer.parseInt(matcher.group(2));
+            int day = Integer.parseInt(matcher.group(3));
+            try {
+                return LocalDate.of(year, month, day);
+            } catch (DateTimeException exception) {
+                validationIssues.add("活动日期无效：" + matcher.group());
+                return null;
+            }
         }
-        int year = Integer.parseInt(matcher.group(1));
-        int month = Integer.parseInt(matcher.group(2));
-        int day = Integer.parseInt(matcher.group(3));
-        try {
-            return LocalDate.of(year, month, day);
-        } catch (DateTimeException exception) {
-            validationIssues.add("活动日期无效：" + matcher.group());
-            return null;
+        LocalDate today = LocalDate.now(clock);
+        if (goal.contains("后天")) {
+            return today.plusDays(2);
         }
+        if (goal.contains("明天")) {
+            return today.plusDays(1);
+        }
+        if (goal.contains("今天") || goal.contains("今日")) {
+            return today;
+        }
+        return null;
     }
 
     private String extractEventName(String goal) {
@@ -89,9 +113,74 @@ public class CampusGoalParser {
         return matcher.group(2) == null ? amount : amount.multiply(BigDecimal.valueOf(10_000));
     }
 
-    private Integer extractInteger(Pattern pattern, String value) {
-        String result = firstGroup(pattern, value);
-        return result == null ? null : Integer.valueOf(result);
+    private Integer extractParticipantCount(String goal, List<String> validationIssues) {
+        String value = firstGroup(PARTICIPANT_COUNT, goal);
+        if (value == null) {
+            return null;
+        }
+        try {
+            return value.chars().allMatch(Character::isDigit)
+                    ? Integer.valueOf(value) : parseChineseInteger(value);
+        } catch (IllegalArgumentException exception) {
+            validationIssues.add("参与人数无效：" + value);
+            return null;
+        }
+    }
+
+    private int parseChineseInteger(String value) {
+        int total = 0;
+        int section = 0;
+        int number = 0;
+        for (char character : value.toCharArray()) {
+            int digit = chineseDigit(character);
+            if (digit >= 0) {
+                number = digit;
+                continue;
+            }
+            int unit = chineseUnit(character);
+            if (unit == 10_000) {
+                section = (section + number) * unit;
+                total += section;
+                section = 0;
+                number = 0;
+            } else if (unit > 0) {
+                section += (number == 0 ? 1 : number) * unit;
+                number = 0;
+            } else {
+                throw new IllegalArgumentException("不支持的中文数字");
+            }
+        }
+        int result = total + section + number;
+        if (result <= 0) {
+            throw new IllegalArgumentException("人数必须大于0");
+        }
+        return result;
+    }
+
+    private int chineseDigit(char character) {
+        return switch (character) {
+            case '零', '〇' -> 0;
+            case '一' -> 1;
+            case '二', '两' -> 2;
+            case '三' -> 3;
+            case '四' -> 4;
+            case '五' -> 5;
+            case '六' -> 6;
+            case '七' -> 7;
+            case '八' -> 8;
+            case '九' -> 9;
+            default -> -1;
+        };
+    }
+
+    private int chineseUnit(char character) {
+        return switch (character) {
+            case '十' -> 10;
+            case '百' -> 100;
+            case '千' -> 1_000;
+            case '万' -> 10_000;
+            default -> -1;
+        };
     }
 
     private String firstGroup(Pattern pattern, String value) {

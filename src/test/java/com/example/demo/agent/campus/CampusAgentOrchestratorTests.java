@@ -4,6 +4,7 @@ import com.example.demo.config.RagConfig;
 import com.example.demo.rag.KeywordRagService;
 import com.example.demo.tool.BotTool;
 import com.example.demo.tool.EventBudgetTool;
+import com.example.demo.tool.EventSupplyEstimateTool;
 import com.example.demo.tool.ToolRegistry;
 import com.fasterxml.jackson.databind.JsonNode;
 import org.junit.jupiter.api.Test;
@@ -31,7 +32,7 @@ class CampusAgentOrchestratorTests {
                 "帮我策划一场2026年9月20日在苏州举行、50人参加、预算2000元的校园AI技术分享会。");
 
         assertEquals(CampusAgentRunStatus.COMPLETED, run.status());
-        assertEquals(11, run.taskExecutions().size());
+        assertEquals(12, run.taskExecutions().size());
         assertTrue(run.taskExecutions().stream()
                 .allMatch(execution -> execution.status() == CampusTaskStatus.SUCCEEDED));
         assertTrue(run.evaluation().passed());
@@ -95,6 +96,26 @@ class CampusAgentOrchestratorTests {
         assertEquals(2, budgetExecutions.get());
         assertEquals(0, run.execution("allocate_budget").output()
                 .path("unallocated").decimalValue().signum());
+    }
+
+    @Test
+    void rejectsWeatherAssessmentForWrongEventDate() {
+        CampusTaskRunner runner = defaultRunner(new CountingFixedTool(
+                "assess_event_weather", new AtomicInteger(), """
+                        {"success":true,"location":"苏州","event_date":"2026-09-19",
+                         "status":"TOO_EARLY","forecast_available":false,
+                         "recheck_on":"2026-09-06","final_check_on":"2026-09-19",
+                         "message":"测试用错位日期","recommendations":["预留室内场地"]}
+                        """));
+        CampusAgentOrchestrator orchestrator = orchestrator(runner);
+
+        CampusAgentRun run = orchestrator.run(
+                "帮我策划一场2026年9月20日在苏州举行、50人参加、预算2000元的校园AI技术分享会。");
+
+        assertEquals(CampusAgentRunStatus.FAILED, run.status());
+        assertFalse(run.evaluation().passed());
+        assertTrue(run.evaluation().issues().stream()
+                .anyMatch(issue -> issue.code().equals("WEATHER_DATE_MISMATCH")));
     }
 
     @Test
@@ -197,7 +218,7 @@ class CampusAgentOrchestratorTests {
 
     private DefaultCampusTaskRunner defaultRunner(BotTool weatherTool) {
         ToolRegistry toolRegistry = new ToolRegistry(List.of(
-                new EventBudgetTool(), weatherTool));
+                new EventBudgetTool(), new EventSupplyEstimateTool(), weatherTool));
         return new DefaultCampusTaskRunner(
                 new KeywordRagService(new RagConfig()), toolRegistry);
     }

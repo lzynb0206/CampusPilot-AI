@@ -61,7 +61,9 @@ public class CampusProposalMarkdownRenderer {
         appendWeather(markdown, output(run, "research_weather"));
         appendAgenda(markdown, output(run, "design_agenda"));
         appendStaffing(markdown, output(run, "plan_staffing"));
-        appendBudget(markdown, output(run, "allocate_budget"));
+        appendBudget(markdown,
+                output(run, "estimate_supplies"),
+                output(run, "allocate_budget"));
         appendMaterials(markdown, output(run, "generate_materials"));
         appendRisks(markdown, output(run, "assess_risks"));
         appendEvaluation(markdown, run);
@@ -141,14 +143,19 @@ public class CampusProposalMarkdownRenderer {
 
     private void appendAgenda(StringBuilder markdown, JsonNode agenda) {
         markdown.append("## 五、活动流程\n\n")
-                .append("> 总时长约").append(agenda.path("duration_minutes").asInt())
-                .append("分钟；以下为相对开始时间，具体开始时间待审批后确认。\n\n")
-                .append("| 时间段 | 环节 |\n")
-                .append("| --- | --- |\n");
+                .append("- 建议时段：").append(agenda.path("proposed_start_time").asText())
+                .append("—").append(agenda.path("proposed_end_time").asText()).append("\n")
+                .append("- 确认状态：`").append(agenda.path("schedule_status").asText()).append("`\n")
+                .append("- 说明：").append(safeText(agenda.path("time_basis").asText())).append("\n\n")
+                .append("| 建议时间 | 相对时间 | 环节 | 责任岗位 |\n")
+                .append("| --- | --- | --- | --- |\n");
         for (JsonNode item : agenda.path("items")) {
-            markdown.append("| 第").append(item.path("start_minute").asInt())
+            markdown.append("| ").append(item.path("start_time").asText())
+                    .append("—").append(item.path("end_time").asText())
+                    .append(" | 第").append(item.path("start_minute").asInt())
                     .append("—").append(item.path("end_minute").asInt()).append("分钟")
-                    .append(" | ").append(tableText(item.path("activity").asText())).append(" |\n");
+                    .append(" | ").append(tableText(item.path("activity").asText()))
+                    .append(" | ").append(tableText(item.path("owner_role").asText())).append(" |\n");
         }
         markdown.append("\n");
     }
@@ -167,22 +174,35 @@ public class CampusProposalMarkdownRenderer {
                 .append("个工作分配，同一成员可在不冲突的时段兼任。\n\n");
     }
 
-    private void appendBudget(StringBuilder markdown, JsonNode budget) {
+    private void appendBudget(StringBuilder markdown, JsonNode supplies, JsonNode budget) {
         markdown.append("## 七、预算方案\n\n")
                 .append("- 总预算：¥").append(money(budget.path("total_budget").decimalValue())).append("\n")
-                .append("- 人均预算：¥").append(money(budget.path("per_capita_budget").decimalValue())).append("\n\n")
-                .append("| 类别 | 比例 | 金额 |\n")
-                .append("| --- | ---: | ---: |\n");
+                .append("- 人均预算：¥").append(money(budget.path("per_capita_budget").decimalValue())).append("\n")
+                .append("- 物资数量缓冲：").append(supplies.path("quantity_buffer_percent").asInt()).append("%\n")
+                .append("- 价格状态：`").append(budget.path("pricing_status").asText()).append("`\n")
+                .append("- 是否取得真实报价：")
+                .append(budget.path("quote_obtained").asBoolean() ? "是" : "否").append("\n")
+                .append("- 价格来源：").append(safeText(supplies.path("source").asText())).append("\n\n")
+                .append("> 下表的“单价”都是内部预算控制上限，不是市场价格或商家报价。")
+                .append("真实执行必须询价并替换。\n\n")
+                .append("| 类别 | 具体项目 | 数量 | 单位 | 单价控制上限 | 小计 | 价格口径 |\n")
+                .append("| --- | --- | ---: | --- | ---: | ---: | --- |\n");
         for (JsonNode item : budget.path("items")) {
-            BigDecimal percent = item.path("ratio").decimalValue()
-                    .multiply(BigDecimal.valueOf(100));
             markdown.append("| ").append(tableText(item.path("category").asText()))
-                    .append(" | ").append(decimal(percent)).append("%")
-                    .append(" | ¥").append(money(item.path("amount").decimalValue())).append(" |\n");
+                    .append(" | ").append(tableText(item.path("item_name").asText()))
+                    .append(" | ").append(decimal(item.path("quantity").decimalValue()))
+                    .append(" | ").append(tableText(item.path("unit").asText()))
+                    .append(" | ¥").append(money(item.path("unit_price_cap").decimalValue()))
+                    .append(" | ¥").append(money(item.path("amount").decimalValue()))
+                    .append(" | `").append(item.path("pricing_type").asText()).append("` |\n");
         }
-        markdown.append("| 合计 | 100% | ¥")
-                .append(money(budget.path("allocated_total").decimalValue())).append(" |\n\n")
-                .append("> ").append(safeText(budget.path("basis").asText())).append("\n\n");
+        markdown.append("| 合计 | — | — | — | — | ¥")
+                .append(money(budget.path("allocated_total").decimalValue())).append(" | — |\n\n")
+                .append("### 零成本优先动作\n\n");
+        appendStringList(markdown, supplies.path("zero_cost_actions"));
+        markdown.append("\n### 询价与报销核验\n\n");
+        appendStringList(markdown, budget.path("verification_steps"));
+        markdown.append("\n> ").append(safeText(budget.path("basis").asText())).append("\n\n");
     }
 
     private void appendMaterials(StringBuilder markdown, JsonNode materials) {

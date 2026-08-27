@@ -18,12 +18,17 @@ import com.example.demo.service.ai.AlibabaAiService;
 import com.example.demo.service.routing.MessageRouter;
 import com.example.demo.tool.BotTool;
 import com.example.demo.tool.EventBudgetTool;
+import com.example.demo.tool.EventSupplyEstimateTool;
 import com.example.demo.tool.ToolCallingEngine;
 import com.example.demo.tool.ToolRegistry;
 import com.fasterxml.jackson.databind.JsonNode;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.client.RestTemplate;
 
+import java.time.Clock;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -85,6 +90,36 @@ class CampusPlanningAgentSkillTests {
     }
 
     @Test
+    void acceptsCompleteActivityGoalWithoutExplicitCampusWord() {
+        CampusPlanningAgentSkill skill = skill(new AtomicInteger());
+
+        assertTrue(skill.matches(
+                "帮我策划一场明天在苏州举办、50人参加、预算2000元的技术分享会"));
+    }
+
+    @Test
+    void executesScreenshotGoalThroughAgentWithRelativeDateAndDetailedBudget() {
+        Clock clock = Clock.fixed(
+                Instant.parse("2026-08-27T05:45:00Z"),
+                ZoneId.of("Asia/Shanghai"));
+        SkillRegistry registry = new SkillRegistry(List.of(skill(
+                new AtomicInteger(), new CampusGoalParser(clock))));
+
+        SkillExecution execution = registry.route(
+                "帮我策划一场明天在苏州举办 五十人参加 预算2000元的技术分享会")
+                .orElseThrow();
+        String markdown = execution.reply();
+
+        assertEquals("campus_planning_agent", execution.skillName());
+        assertTrue(markdown.contains("# 技术分享会完整活动策划书"));
+        assertTrue(markdown.contains("| 日期 | 2026-08-28 |"));
+        assertTrue(markdown.contains("| 饮水 | 瓶装水 | 55 | 瓶 | ¥2.00 | ¥110.00"));
+        assertTrue(markdown.contains("是否取得真实报价：否"));
+        assertTrue(markdown.contains("单价”都是内部预算控制上限"));
+        assertFalse(markdown.contains("2024年8月9日"));
+    }
+
+    @Test
     void recognizesValidResumeCommandOnly() {
         CampusPlanningAgentSkill skill = skill(new AtomicInteger());
 
@@ -112,13 +147,19 @@ class CampusPlanningAgentSkillTests {
     }
 
     private CampusPlanningAgentSkill skill(AtomicInteger weatherCalls) {
+        return skill(weatherCalls, new CampusGoalParser());
+    }
+
+    private CampusPlanningAgentSkill skill(
+            AtomicInteger weatherCalls, CampusGoalParser goalParser) {
         ToolRegistry toolRegistry = new ToolRegistry(List.of(
                 new EventBudgetTool(),
+                new EventSupplyEstimateTool(),
                 new FixedWeatherTool(weatherCalls)));
         DefaultCampusTaskRunner taskRunner = new DefaultCampusTaskRunner(
                 new KeywordRagService(new RagConfig()), toolRegistry);
         CampusAgentOrchestrator orchestrator = new CampusAgentOrchestrator(
-                new CampusGoalParser(),
+                goalParser,
                 new CampusTaskPlanner(),
                 taskRunner,
                 new CampusPlanEvaluator());
@@ -152,14 +193,18 @@ class CampusPlanningAgentSkillTests {
         @Override
         public String execute(JsonNode arguments) {
             calls.incrementAndGet();
+            LocalDate eventDate = LocalDate.parse(arguments.path("event_date").asText());
             return """
-                    {"success":true,"location":"苏州","event_date":"2026-09-20",
+                    {"success":true,"location":"苏州","event_date":"%s",
                      "status":"TOO_EARLY","forecast_available":false,
-                     "recheck_on":"2026-09-06","final_check_on":"2026-09-19",
-                     "message":"活动日期超出逐日预报范围，当前没有把实况冒充预报。",
-                     "source":"心知天气逐日预报API",
+                     "recheck_on":"%s","final_check_on":"%s",
+                     "message":"测试环境未调用真实天气接口，没有把实况冒充预报。",
+                     "source":"测试天气工具",
                      "recommendations":["预留室内场地","在复查日期重新调用真实预报"]}
-                    """;
+                    """.formatted(
+                    eventDate,
+                    eventDate.minusDays(14),
+                    eventDate.minusDays(1));
         }
     }
 

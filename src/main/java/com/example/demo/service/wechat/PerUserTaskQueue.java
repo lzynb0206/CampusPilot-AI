@@ -48,13 +48,18 @@ public class PerUserTaskQueue {
 
     private void schedule(String userId, UserQueue queue, QueuedTask queuedTask) {
         taskExecutor.execute(() -> {
+            Throwable failure = null;
             try {
                 queuedTask.task.run();
-                queuedTask.completion.complete(null);
             } catch (Throwable throwable) {
-                queuedTask.completion.completeExceptionally(throwable);
+                failure = throwable;
             } finally {
                 advance(userId, queue);
+                if (failure == null) {
+                    queuedTask.completion.complete(null);
+                } else {
+                    queuedTask.completion.completeExceptionally(failure);
+                }
             }
         });
     }
