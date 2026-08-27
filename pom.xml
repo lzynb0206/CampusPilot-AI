@@ -9,13 +9,17 @@
         <relativePath/>
     </parent>
     <groupId>com.example</groupId>
-    <artifactId>Demo</artifactId>
-    <version>0.0.1-SNAPSHOT</version>
-    <name>Demo</name>
-    <description>Demo</description>
+    <artifactId>campus-pilot-ai</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+    <name>CampusPilot AI</name>
+    <description>WeChat-native AI agent for planning campus events with multi-turn memory, RAG, tool calling, and workflow orchestration.</description>
     <url/>
     <licenses>
-        <license/>
+        <license>
+            <name>MIT License</name>
+            <url>https://opensource.org/licenses/MIT</url>
+            <distribution>repo</distribution>
+        </license>
     </licenses>
     <developers>
         <developer/>

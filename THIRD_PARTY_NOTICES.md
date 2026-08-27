@@ -1,5 +1,14 @@
 # Third-party notices
 
+## wechat-ilink-sdk
+
+This project uses [`wechat-ilink-sdk`](https://github.com/lith0924/wechat-ilink-sdk-java)
+for QR-code login, message delivery, and WeChat media transfer.
+
+- Maven artifact: `io.github.lith0924:wechat-ilink-sdk:2.3.3`
+- license: MIT
+- copyright: its authors and contributors
+
 ## silk-wasm
 
 This project uses [`silk-wasm`](https://github.com/idranme/silk-wasm) to decode

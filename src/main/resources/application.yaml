@@ -1,6 +1,6 @@
 spring:
   application:
-    name: Demo
+    name: campus-pilot-ai
   config:
     import: optional:classpath:application-local.yml
 
@@ -10,7 +10,7 @@ logging:
 
 wechat:
   bot:
-    enabled: ${WECHAT_BOT_ENABLED:true}
+    enabled: ${WECHAT_BOT_ENABLED:false}
     download-dir: ${WECHAT_DOWNLOAD_DIR:downloads}
     qr-code-path: ${WECHAT_QR_CODE_PATH:wechat-login-qr.png}
 
