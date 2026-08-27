@@ -6,6 +6,7 @@ import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.time.ZoneId;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -32,18 +33,19 @@ class CampusGoalParserTests {
     }
 
     @Test
-    void keepsMissingFactsUnknownInsteadOfInventingDefaults() {
+    void appliesClearlyMarkedDefaultsAndKeepsDateAndCityOpen() {
         CampusEventGoal goal = parser.parse("帮我策划一次校园技术活动");
 
+        assertEquals("校园技术活动", goal.eventName());
         assertNull(goal.eventDate());
         assertNull(goal.city());
-        assertNull(goal.participantCount());
-        assertNull(goal.budget());
+        assertEquals(50, goal.participantCount());
+        assertEquals(new BigDecimal("2000"), goal.budget());
         assertTrue(goal.missingFields().contains("活动日期"));
         assertTrue(goal.missingFields().contains("举办城市"));
         assertTrue(goal.missingFields().contains("参与人数"));
         assertTrue(goal.missingFields().contains("总预算"));
-        assertFalse(goal.isReadyForExecution());
+        assertTrue(goal.isReadyForExecution());
     }
 
     @Test
@@ -82,5 +84,16 @@ class CampusGoalParserTests {
         assertEquals(205, goal.participantCount());
         assertEquals(new BigDecimal("20000"), goal.budget());
         assertTrue(goal.isReadyForExecution());
+    }
+
+    @Test
+    void parsesConversationFieldsWithoutMistakingASchoolForACity() {
+        CampusEventGoal goal = parser.parse(
+                "请策划校园活动，学校：南京信息工程大学，活动场地：明德楼，开始时间：15:30");
+
+        assertEquals("南京信息工程大学", goal.school());
+        assertEquals("明德楼", goal.venue());
+        assertEquals(LocalTime.of(15, 30), goal.startTime());
+        assertNull(goal.city());
     }
 }

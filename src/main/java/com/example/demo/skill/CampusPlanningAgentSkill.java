@@ -22,7 +22,8 @@ public class CampusPlanningAgentSkill implements BotSkill {
     private static final List<String> CAMPUS_SIGNALS = List.of("校园", "校内", "学校");
     private static final List<String> PLANNING_SIGNALS = List.of("策划", "规划", "组织", "举办");
     private static final List<String> EVENT_SIGNALS = List.of(
-            "活动", "分享会", "讲座", "比赛", "论坛", "晚会", "沙龙", "团建", "会议");
+            "活动", "分享会", "讲座", "比赛", "论坛", "晚会", "沙龙", "团建", "会议",
+            "运动会", "市集", "演出");
 
     private final CampusAgentOrchestrator orchestrator;
     private final CampusProposalMarkdownRenderer renderer;

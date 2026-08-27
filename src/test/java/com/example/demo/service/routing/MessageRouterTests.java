@@ -2,6 +2,7 @@ package com.example.demo.service.routing;
 
 import com.example.demo.config.AiConfig;
 import com.example.demo.config.RagConfig;
+import com.example.demo.agent.campus.CampusGoalParser;
 import com.example.demo.model.ActionType;
 import com.example.demo.model.IntentResult;
 import com.example.demo.model.MessageRouteResult;
@@ -10,6 +11,8 @@ import com.example.demo.model.ReplyMode;
 import com.example.demo.rag.KeywordRagService;
 import com.example.demo.service.ai.AlibabaAiService;
 import com.example.demo.skill.BotSkill;
+import com.example.demo.skill.CampusVenueUpdateSkill;
+import com.example.demo.skill.CampusPlanningAgentSkill;
 import com.example.demo.skill.SkillRegistry;
 import com.example.demo.tool.ToolCallingEngine;
 import com.example.demo.tool.ToolRegistry;
@@ -17,6 +20,10 @@ import org.junit.jupiter.api.Test;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.List;
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.ZoneId;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -86,6 +93,94 @@ class MessageRouterTests {
         assertEquals(0, aiService.chatCalls.get());
     }
 
+    @Test
+    void rejectsWeatherClassificationWhenMessageOnlyContainsACity() {
+        StubAiService aiService = new StubAiService();
+        aiService.nextIntent = new IntentResult(
+                ActionType.WEATHER, ReplyMode.TEXT,
+                "我是在南京信息工程大学明德楼举行", "南京");
+        MessageRouter router = router(new RagConfig(), List.of(), aiService);
+
+        MessageRouteResult result = router.route(
+                "我是在南京信息工程大学 明德楼举行", ReplyMode.TEXT);
+
+        assertEquals(ActionType.CHAT, result.action());
+        assertEquals("chat", result.routeDetail());
+        assertEquals("我是在南京信息工程大学 明德楼举行", aiService.lastPrompt);
+        assertFalse(aiService.lastPrompt.contains("请查询“南京”的当前天气"));
+    }
+
+    @Test
+    void campusVenueSupplementIsHandledBeforeIntentClassification() {
+        StubAiService aiService = new StubAiService();
+        MessageRouter router = router(
+                new RagConfig(), List.of(new CampusVenueUpdateSkill()), aiService);
+
+        MessageRouteResult result = router.route(
+                "我是在南京信息工程大学 明德楼举行", ReplyMode.TEXT);
+
+        assertEquals(MessageRouteType.SKILL, result.routeType());
+        assertEquals("campus_venue_update", result.routeDetail());
+        assertTrue(result.content().contains("南京信息工程大学明德楼"));
+        assertFalse(result.content().contains("天气"));
+        assertEquals(0, aiService.intentCalls.get());
+        assertEquals(0, aiService.chatCalls.get());
+    }
+
+    @Test
+    void conversationIdConnectsCampusFollowUpsBeforeOtherRoutes() {
+        StubAiService aiService = new StubAiService();
+        Clock clock = Clock.fixed(Instant.parse("2026-08-27T05:30:00Z"), ZoneId.of("UTC"));
+        CampusConversationService conversations = new CampusConversationService(
+                new EchoPlanningSkill(),
+                new CampusConversationUpdateParser(new CampusGoalParser(
+                        clock.withZone(ZoneId.of("Asia/Shanghai")))),
+                clock,
+                Duration.ofHours(2));
+        MessageRouter router = new MessageRouter(
+                new SkillRegistry(List.of()),
+                new KeywordRagService(new RagConfig()),
+                aiService,
+                conversations);
+
+        router.route("wechat-user-1", "帮我策划一次校园技术活动", ReplyMode.TEXT);
+        MessageRouteResult result = router.route(
+                "wechat-user-1", "改到西区食堂三楼，人数改80", ReplyMode.TEXT);
+
+        assertEquals(MessageRouteType.SKILL, result.routeType());
+        assertEquals("campus_conversation_update", result.routeDetail());
+        assertTrue(result.content().contains("活动场地：西区食堂三楼"));
+        assertTrue(result.content().contains("参与人数：80人"));
+        assertEquals(0, aiService.intentCalls.get());
+        assertEquals(0, aiService.chatCalls.get());
+    }
+
+    @Test
+    void ordinaryFollowUpReceivesTheSavedCampusContext() {
+        StubAiService aiService = new StubAiService();
+        Clock clock = Clock.fixed(Instant.parse("2026-08-27T05:30:00Z"), ZoneId.of("UTC"));
+        CampusConversationService conversations = new CampusConversationService(
+                new EchoPlanningSkill(),
+                new CampusConversationUpdateParser(new CampusGoalParser(
+                        clock.withZone(ZoneId.of("Asia/Shanghai")))),
+                clock,
+                Duration.ofHours(2));
+        RagConfig ragConfig = new RagConfig();
+        ragConfig.setEnabled(false);
+        MessageRouter router = new MessageRouter(
+                new SkillRegistry(List.of()),
+                new KeywordRagService(ragConfig),
+                aiService,
+                conversations);
+
+        router.route("wechat-user-1", "帮我策划一次校园技术活动", ReplyMode.TEXT);
+        router.route("wechat-user-1", "这个活动还有什么风险？", ReplyMode.TEXT);
+
+        assertTrue(aiService.lastPrompt.contains("<campus_activity_context>"));
+        assertTrue(aiService.lastPrompt.contains("活动名称：校园技术活动"));
+        assertTrue(aiService.lastPrompt.contains("这个活动还有什么风险？"));
+    }
+
     private MessageRouter router(
             RagConfig ragConfig,
             List<BotSkill> skills,
@@ -115,6 +210,22 @@ class MessageRouterTests {
         @Override
         public String execute(String userMessage) {
             return reply;
+        }
+    }
+
+    private static class EchoPlanningSkill extends CampusPlanningAgentSkill {
+        EchoPlanningSkill() {
+            super(null, null);
+        }
+
+        @Override
+        public boolean matches(String userMessage) {
+            return userMessage.contains("帮我策划") && userMessage.contains("活动");
+        }
+
+        @Override
+        public String execute(String userMessage) {
+            return userMessage;
         }
     }
 

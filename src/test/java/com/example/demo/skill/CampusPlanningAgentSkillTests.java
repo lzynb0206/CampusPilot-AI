@@ -16,6 +16,8 @@ import com.example.demo.model.ReplyMode;
 import com.example.demo.rag.KeywordRagService;
 import com.example.demo.service.ai.AlibabaAiService;
 import com.example.demo.service.routing.MessageRouter;
+import com.example.demo.service.routing.CampusConversationService;
+import com.example.demo.service.routing.CampusConversationUpdateParser;
 import com.example.demo.tool.BotTool;
 import com.example.demo.tool.EventBudgetTool;
 import com.example.demo.tool.EventSupplyEstimateTool;
@@ -52,34 +54,33 @@ class CampusPlanningAgentSkillTests {
 
         assertEquals("campus_planning_agent", execution.skillName());
         assertEquals(1, weatherCalls.get());
-        assertTrue(markdown.contains("# 校园AI技术分享会完整活动策划书"));
-        assertTrue(markdown.contains("## 二、校园规定与知识依据"));
-        assertTrue(markdown.contains("`TEMPLATE`"));
-        assertTrue(markdown.contains("不能冒充所在学校的正式制度"));
-        assertTrue(markdown.contains("## 四、天气评估与备用方案"));
+        assertTrue(markdown.contains("# 校园AI技术分享会活动方案"));
+        assertTrue(markdown.contains("## 二、通用校园规则"));
+        assertTrue(markdown.contains("本校细则（有的话再补充）"));
+        assertFalse(markdown.contains("`TEMPLATE`"));
+        assertTrue(markdown.contains("## 四、天气与备用方案"));
         assertTrue(markdown.contains("2026-09-06"));
         assertTrue(markdown.contains("## 七、预算方案"));
         assertTrue(markdown.contains("¥2000.00"));
-        assertTrue(markdown.contains("## 十、Evaluator检查结果"));
-        assertTrue(markdown.contains("是否通过：是"));
-        assertTrue(markdown.contains("## 十二、Agent执行记录"));
-        assertTrue(markdown.contains("真实审批、场地预约和材料发布尚未执行"));
+        assertFalse(markdown.contains("Evaluator"));
+        assertFalse(markdown.contains("Agent任务编号"));
+        assertFalse(markdown.contains("执行记录"));
         assertTrue(markdown.length() < 20_000, "策划书不应异常膨胀");
     }
 
     @Test
-    void asksForMissingConstraintsWithoutCallingExternalTool() {
+    void returnsGenericPlanWithoutBlockingOnMissingDetails() {
         AtomicInteger weatherCalls = new AtomicInteger();
         SkillRegistry registry = new SkillRegistry(List.of(skill(weatherCalls)));
 
         SkillExecution execution = registry.route("帮我策划一次校园技术活动").orElseThrow();
 
         assertEquals(0, weatherCalls.get());
-        assertTrue(execution.reply().contains("需要补充信息"));
-        assertTrue(execution.reply().contains("活动日期"));
-        assertTrue(execution.reply().contains("城市"));
-        assertTrue(execution.reply().contains("参与人数"));
-        assertTrue(execution.reply().contains("总预算"));
+        assertTrue(execution.reply().contains("# 校园技术活动方案"));
+        assertTrue(execution.reply().contains("先给你一份可直接修改的校园通用方案"));
+        assertTrue(execution.reply().contains("推荐区域：**教学楼"));
+        assertTrue(execution.reply().contains("本校细则（有的话再补充）"));
+        assertFalse(execution.reply().contains("需要补充信息"));
     }
 
     @Test
@@ -111,11 +112,11 @@ class CampusPlanningAgentSkillTests {
         String markdown = execution.reply();
 
         assertEquals("campus_planning_agent", execution.skillName());
-        assertTrue(markdown.contains("# 技术分享会完整活动策划书"));
+        assertTrue(markdown.contains("# 技术分享会活动方案"));
         assertTrue(markdown.contains("| 日期 | 2026-08-28 |"));
         assertTrue(markdown.contains("| 饮水 | 瓶装水 | 55 | 瓶 | ¥2.00 | ¥110.00"));
-        assertTrue(markdown.contains("是否取得真实报价：否"));
-        assertTrue(markdown.contains("单价”都是内部预算控制上限"));
+        assertTrue(markdown.contains("单价是前期预算控制上限"));
+        assertFalse(markdown.contains("是否取得真实报价"));
         assertFalse(markdown.contains("2024年8月9日"));
     }
 
@@ -141,9 +142,64 @@ class CampusPlanningAgentSkillTests {
         assertEquals(MessageRouteType.SKILL, result.routeType());
         assertEquals(ActionType.CHAT, result.action());
         assertEquals("campus_planning_agent", result.routeDetail());
-        assertTrue(result.content().contains("完整活动策划书"));
+        assertTrue(result.content().contains("活动方案"));
         assertEquals(1, weatherCalls.get());
         assertEquals(0, aiService.calls.get());
+    }
+
+    @Test
+    void recommendsCampusAreaBeforeAskingForExactVenue() {
+        SkillRegistry registry = new SkillRegistry(List.of(skill(new AtomicInteger())));
+
+        String reply = registry.route("帮我策划一次校园趣味运动会").orElseThrow().reply();
+
+        assertTrue(reply.contains("推荐区域：**操场或体育场"));
+        assertTrue(reply.contains("具体楼号、教室号或场地名称可后续补充"));
+        assertTrue(reply.contains("分组趣味项目与轮换比赛"));
+        assertTrue(reply.contains("裁判与计分"));
+        assertTrue(reply.contains("| 建议时长 | 2小时30分钟 |"));
+        assertFalse(reply.contains("技术主题分享"));
+    }
+
+    @Test
+    void rendersUserProvidedSchoolVenueAndStartTimeInTheUpdatedPlan() {
+        SkillRegistry registry = new SkillRegistry(List.of(skill(new AtomicInteger())));
+
+        String reply = registry.route(
+                "帮我策划一次校园AI分享会，学校：南京信息工程大学，活动场地：明德楼，"
+                        + "开始时间：15:30，50人参加，预算2000元")
+                .orElseThrow().reply();
+
+        assertTrue(reply.contains("| 位置 | 南京信息工程大学·明德楼 |"));
+        assertTrue(reply.contains("推荐区域：**南京信息工程大学·明德楼"));
+        assertTrue(reply.contains("建议时段：15:30—17:30"));
+        assertTrue(reply.contains("已采用你在当前活动会话中补充的开始时间"));
+        assertTrue(reply.contains("确认该场地的具体房间号、预约时段和设备开放情况"));
+    }
+
+    @Test
+    void screenshotVenueFollowUpRegeneratesTheSavedPlanWithoutCallingWeather() {
+        AtomicInteger weatherCalls = new AtomicInteger();
+        CampusPlanningAgentSkill planningSkill = skill(weatherCalls);
+        CampusConversationService conversations = new CampusConversationService(
+                planningSkill,
+                new CampusConversationUpdateParser(new CampusGoalParser()),
+                120);
+        MessageRouter router = new MessageRouter(
+                new SkillRegistry(List.of(planningSkill)),
+                new KeywordRagService(new RagConfig()),
+                new FailIfCalledAiService(),
+                conversations);
+
+        router.route("wechat-user-1", "帮我策划一次校园技术活动", ReplyMode.TEXT);
+        MessageRouteResult updated = router.route(
+                "wechat-user-1", "我是在南京信息工程大学 明德楼举行", ReplyMode.TEXT);
+
+        assertEquals("campus_conversation_update", updated.routeDetail());
+        assertTrue(updated.content().contains("| 位置 | 南京信息工程大学明德楼 |"));
+        assertTrue(updated.content().contains("推荐区域：**南京信息工程大学明德楼"));
+        assertFalse(updated.content().contains("南京当前天气"));
+        assertEquals(0, weatherCalls.get());
     }
 
     private CampusPlanningAgentSkill skill(AtomicInteger weatherCalls) {

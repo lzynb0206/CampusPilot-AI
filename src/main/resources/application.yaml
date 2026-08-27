@@ -54,3 +54,4 @@ skills:
 agent:
   campus:
     checkpoint-dir: ${CAMPUS_AGENT_CHECKPOINT_DIR:data/campus-agent-checkpoints}
+    conversation-ttl-minutes: ${CAMPUS_CONVERSATION_TTL_MINUTES:120}

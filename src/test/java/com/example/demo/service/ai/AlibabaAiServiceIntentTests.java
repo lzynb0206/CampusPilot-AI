@@ -24,10 +24,14 @@ class AlibabaAiServiceIntentTests {
         var weather = service.recognizeIntent("张家港今天天气怎么样", ReplyMode.TEXT);
         var image = service.recognizeIntent("帮我画一张校园海报", ReplyMode.TEXT);
         var chat = service.recognizeIntent("介绍一下Agent", ReplyMode.TEXT);
+        var venue = service.recognizeIntent(
+                "我是在南京信息工程大学 明德楼举行", ReplyMode.TEXT);
 
         assertEquals(ActionType.WEATHER, weather.action());
         assertEquals("张家港", weather.location());
         assertEquals(ActionType.IMAGE_GENERATION, image.action());
         assertEquals(ActionType.CHAT, chat.action());
+        assertEquals(ActionType.CHAT, venue.action());
+        assertEquals("", venue.location());
     }
 }

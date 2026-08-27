@@ -59,6 +59,8 @@ public class AlibabaAiService {
                 replyMode只能是TEXT、VOICE。
                 用户要求画图、生成图片时使用IMAGE_GENERATION，并把绘图描述放入content。
                 用户询问天气、温度、是否下雨时使用WEATHER，并把最具体、可独立查询的城市、区县名称放入location。
+                只有用户明确出现“天气、气温、温度、下雨、降雨、几度”等天气词时才能使用WEATHER。
+                单纯出现城市名不是天气查询。例如“我在南京信息工程大学明德楼举行”是活动场地补充，必须使用CHAT。
                 不要把上级城市和下级城市连在一起，例如“苏州张家港”应返回“张家港”，
                 “江苏省苏州市张家港市”也应返回“张家港”，“上海浦东新区”应返回“浦东新区”。
                 其他情况使用CHAT，并把真正的问题放入content。
@@ -86,6 +88,10 @@ public class AlibabaAiService {
                     ReplyMode.class, result.path("replyMode").asText(), defaultReplyMode);
             String normalizedContent = result.path("content").asText(text).trim();
             String location = result.path("location").asText("").trim();
+            if (action == ActionType.WEATHER && !hasExplicitWeatherSignal(text)) {
+                log.info("拒绝无天气词的WEATHER误判");
+                return localIntent;
+            }
             return new IntentResult(action, replyMode, normalizedContent, location);
         } catch (Exception exception) {
             log.warn("千问意图识别失败，使用本地规则兜底", exception);
@@ -223,14 +229,20 @@ public class AlibabaAiService {
             return new IntentResult(ActionType.IMAGE_GENERATION, ReplyMode.TEXT,
                     content.isEmpty() ? "一只可爱的小猫" : content, "");
         }
-        if (lower.contains("天气") || lower.contains("气温") || lower.contains("温度")
-                || lower.contains("下雨")) {
+        if (hasExplicitWeatherSignal(lower)) {
             String location = text.replaceAll(
                     "(请|帮我|查询|查一下|告诉我|用语音|语音|今天|现在|当前|的|天气|气温|温度|怎么样|如何|是否|会不会|下雨|[?？])",
                     "").trim();
             return new IntentResult(ActionType.WEATHER, replyMode, text, location);
         }
         return new IntentResult(ActionType.CHAT, replyMode, text, "");
+    }
+
+    private boolean hasExplicitWeatherSignal(String text) {
+        String lower = text == null ? "" : text.toLowerCase(Locale.ROOT);
+        return lower.contains("天气") || lower.contains("气温") || lower.contains("温度")
+                || lower.contains("下雨") || lower.contains("降雨") || lower.contains("雨天")
+                || lower.contains("几度") || lower.contains("冷不冷") || lower.contains("热不热");
     }
 
     private String chatCompletion(Map<String, Object> body) {

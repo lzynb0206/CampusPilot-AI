@@ -148,7 +148,7 @@ public class WechatBotService implements DisposableBean {
         log.info("收到微信文本消息 userId={}", fromUserId);
         try {
             client.startTyping(fromUserId);
-            MessageRouteResult route = messageRouter.route(userText, ReplyMode.TEXT);
+            MessageRouteResult route = messageRouter.route(fromUserId, userText, ReplyMode.TEXT);
             executeRoute(fromUserId, route);
         } catch (Exception exception) {
             log.error("处理文本消息失败 userId={}", fromUserId, exception);
@@ -166,7 +166,8 @@ public class WechatBotService implements DisposableBean {
             byte[] wav = audioTranscoder.silkToWav(silk);
             String recognizedText = aiService.transcribeAudio(wav);
             log.info("微信语音识别完成 userId={}", fromUserId);
-            MessageRouteResult route = messageRouter.route(recognizedText, ReplyMode.VOICE);
+            MessageRouteResult route = messageRouter.route(
+                    fromUserId, recognizedText, ReplyMode.VOICE);
             executeRoute(fromUserId, route);
         } catch (Exception exception) {
             log.error("处理语音消息失败 userId={}", fromUserId, exception);

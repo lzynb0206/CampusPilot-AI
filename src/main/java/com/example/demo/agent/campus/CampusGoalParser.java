@@ -4,7 +4,9 @@ import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.DateTimeException;
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.time.ZoneId;
+import java.time.temporal.TemporalAdjusters;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Matcher;
@@ -16,10 +18,20 @@ import org.springframework.stereotype.Component;
 @Component
 public class CampusGoalParser {
     private static final ZoneId BUSINESS_ZONE = ZoneId.of("Asia/Shanghai");
+    private static final String DEFAULT_EVENT_NAME = "校园主题活动";
+    private static final int DEFAULT_PARTICIPANT_COUNT = 50;
+    private static final BigDecimal DEFAULT_BUDGET = new BigDecimal("2000");
     private static final Pattern DATE = Pattern.compile(
             "(?<!\\d)(\\d{4})\\s*[年./-]\\s*(\\d{1,2})\\s*[月./-]\\s*(\\d{1,2})\\s*日?");
     private static final Pattern CITY = Pattern.compile(
             "(?:在|地点\\s*[=：:]\\s*)([\\p{IsHan}]{2,20}?)(?:市)?(?:举办|举行|开展|组织)");
+    private static final Pattern SCHOOL = Pattern.compile(
+            "(?:学校|院校)\\s*[=：:]\\s*([^，。；;]{2,60})");
+    private static final Pattern VENUE = Pattern.compile(
+            "(?:活动)?(?:场地|地点)\\s*[=：:]\\s*([^，。；;]{1,80})");
+    private static final Pattern START_TIME = Pattern.compile(
+            "(?:开始时间|活动时间|时间)\\s*[=：:]?\\s*(\\d{1,2})(?:[:：点时](\\d{1,2})?)?");
+    private static final Pattern NEXT_WEEKDAY = Pattern.compile("下周([一二三四五六日天])");
     private static final Pattern PARTICIPANT_COUNT = Pattern.compile(
             "(?<!\\d)(\\d{1,6}|[零〇一二两三四五六七八九十百千万]{1,8})\\s*(?:人|位)(?:参加|参与|规模)?");
     private static final Pattern BUDGET = Pattern.compile(
@@ -27,7 +39,10 @@ public class CampusGoalParser {
     private static final Pattern EXPLICIT_EVENT_NAME = Pattern.compile(
             "(?:活动名称|活动主题|名称|主题)\\s*[=：:]\\s*([^，。；;]{2,60})");
     private static final Pattern EVENT_NAME_AFTER_BUDGET = Pattern.compile(
-            "(?:元|人民币)\\s*的?\\s*([^，。；;]{2,60}?(?:分享会|活动|讲座|比赛|论坛|晚会|展览|沙龙|会议|团建))");
+            "(?:元|人民币)\\s*的?\\s*([^，。；;]{2,60}?(?:分享会|运动会|活动|讲座|比赛|论坛|晚会|展览|沙龙|会议|团建|市集|演出))");
+    private static final Pattern EVENT_NAME_AFTER_PLANNING = Pattern.compile(
+            "(?:策划|规划|组织|举办)(?:一场|一次|一个)?\\s*"
+                    + "([^，。；;\\d]{2,40}?(?:分享会|运动会|活动|讲座|比赛|论坛|晚会|展览|沙龙|会议|团建|市集|演出))");
     private final Clock clock;
 
     @Autowired
@@ -48,7 +63,10 @@ public class CampusGoalParser {
         List<String> validationIssues = new ArrayList<>();
         String eventName = extractEventName(goal);
         LocalDate eventDate = extractDate(goal, validationIssues);
-        String city = firstGroup(CITY, goal);
+        String city = extractCity(goal);
+        String school = firstGroup(SCHOOL, goal);
+        String venue = firstGroup(VENUE, goal);
+        LocalTime startTime = extractStartTime(goal, validationIssues);
         Integer participantCount = extractParticipantCount(goal, validationIssues);
         BigDecimal budget = extractBudget(goal);
 
@@ -59,11 +77,26 @@ public class CampusGoalParser {
         addMissing(missingFields, participantCount, "参与人数");
         addMissing(missingFields, budget, "总预算");
 
+        // 信息不全时仍先产出可用通用方案；这些默认值会在成品中明确标注，
+        // 用户后续补充真实信息后可以再精细化。日期和城市不虚构，留作待补充项。
+        if (eventName == null) {
+            eventName = DEFAULT_EVENT_NAME;
+        }
+        if (participantCount == null) {
+            participantCount = DEFAULT_PARTICIPANT_COUNT;
+        }
+        if (budget == null) {
+            budget = DEFAULT_BUDGET;
+        }
+
         return new CampusEventGoal(
                 goal,
                 eventName,
                 eventDate,
                 city,
+                school,
+                venue,
+                startTime,
                 participantCount,
                 budget,
                 missingFields,
@@ -93,7 +126,52 @@ public class CampusGoalParser {
         if (goal.contains("今天") || goal.contains("今日")) {
             return today;
         }
+        Matcher nextWeekday = NEXT_WEEKDAY.matcher(goal);
+        if (nextWeekday.find()) {
+            LocalDate nextMonday = today.with(TemporalAdjusters.previousOrSame(
+                    java.time.DayOfWeek.MONDAY)).plusWeeks(1);
+            return nextMonday.plusDays(chineseWeekday(nextWeekday.group(1)) - 1L);
+        }
         return null;
+    }
+
+    private String extractCity(String goal) {
+        String value = firstGroup(CITY, goal);
+        if (value == null || value.length() > 8
+                || value.contains("大学") || value.contains("学院") || value.contains("学校")
+                || value.endsWith("楼") || value.endsWith("馆") || value.endsWith("厅")) {
+            return null;
+        }
+        return value;
+    }
+
+    private LocalTime extractStartTime(String goal, List<String> validationIssues) {
+        Matcher matcher = START_TIME.matcher(goal);
+        if (!matcher.find()) {
+            return null;
+        }
+        int hour = Integer.parseInt(matcher.group(1));
+        int minute = matcher.group(2) == null || matcher.group(2).isBlank()
+                ? 0 : Integer.parseInt(matcher.group(2));
+        try {
+            return LocalTime.of(hour, minute);
+        } catch (DateTimeException exception) {
+            validationIssues.add("活动开始时间无效：" + matcher.group());
+            return null;
+        }
+    }
+
+    private int chineseWeekday(String value) {
+        return switch (value) {
+            case "一" -> 1;
+            case "二" -> 2;
+            case "三" -> 3;
+            case "四" -> 4;
+            case "五" -> 5;
+            case "六" -> 6;
+            case "日", "天" -> 7;
+            default -> throw new IllegalArgumentException("不支持的星期：" + value);
+        };
     }
 
     private String extractEventName(String goal) {
@@ -101,7 +179,8 @@ public class CampusGoalParser {
         if (explicitName != null) {
             return explicitName;
         }
-        return firstGroup(EVENT_NAME_AFTER_BUDGET, goal);
+        String afterBudget = firstGroup(EVENT_NAME_AFTER_BUDGET, goal);
+        return afterBudget != null ? afterBudget : firstGroup(EVENT_NAME_AFTER_PLANNING, goal);
     }
 
     private BigDecimal extractBudget(String goal) {

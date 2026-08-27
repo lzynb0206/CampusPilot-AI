@@ -46,7 +46,7 @@ class CampusAgentOrchestratorTests {
     }
 
     @Test
-    void stopsBeforeExternalTasksWhenGoalIsIncomplete() {
+    void generatesGenericPlanWithoutCallingWeatherWhenDetailsAreMissing() {
         AtomicInteger toolCalls = new AtomicInteger();
         CampusTaskRunner runner = defaultRunner(new CountingFixedTool(
                 "assess_event_weather", toolCalls, weatherTooEarlyResult()));
@@ -54,15 +54,36 @@ class CampusAgentOrchestratorTests {
 
         CampusAgentRun run = orchestrator.run("帮我策划一次校园技术活动");
 
-        assertEquals(CampusAgentRunStatus.NEEDS_INPUT, run.status());
-        assertFalse(run.evaluation().passed());
+        assertEquals(CampusAgentRunStatus.COMPLETED, run.status());
+        assertTrue(run.evaluation().passed());
         assertEquals(CampusTaskStatus.SUCCEEDED,
                 run.execution("resolve_constraints").status());
-        assertEquals(CampusTaskStatus.BLOCKED,
+        assertEquals(CampusTaskStatus.SUCCEEDED,
                 run.execution("research_weather").status());
         assertEquals(0, toolCalls.get());
         assertTrue(run.evaluation().issues().stream()
-                .anyMatch(issue -> issue.code().equals("MISSING_CONSTRAINT")));
+                .anyMatch(issue -> issue.code().equals("DEFAULT_ASSUMPTION")));
+    }
+
+    @Test
+    void missingSchoolRulesDoesNotBlockGenericPlan() {
+        RagConfig disabledRag = new RagConfig();
+        disabledRag.setEnabled(false);
+        ToolRegistry tools = new ToolRegistry(List.of(
+                new EventBudgetTool(),
+                new EventSupplyEstimateTool(),
+                new CountingFixedTool("assess_event_weather", new AtomicInteger(),
+                        weatherTooEarlyResult())));
+        DefaultCampusTaskRunner runner = new DefaultCampusTaskRunner(
+                new KeywordRagService(disabledRag), tools);
+
+        CampusAgentRun run = orchestrator(runner).run(
+                "帮我策划一次校园技术活动");
+
+        assertEquals(CampusAgentRunStatus.COMPLETED, run.status());
+        assertTrue(run.evaluation().passed());
+        assertTrue(run.evaluation().issues().stream()
+                .anyMatch(issue -> issue.code().equals("RAG_EMPTY")));
     }
 
     @Test

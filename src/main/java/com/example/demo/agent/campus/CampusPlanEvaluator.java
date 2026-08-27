@@ -24,16 +24,15 @@ public class CampusPlanEvaluator {
             "generate_materials",
             "assess_risks");
     private static final Set<String> WEATHER_STATUSES = Set.of(
-            "TOO_EARLY", "RECHECK_REQUIRED", "QUERY_FAILED", "FORECAST_AVAILABLE");
+            "GENERAL_PLAN", "TOO_EARLY", "RECHECK_REQUIRED", "QUERY_FAILED", "FORECAST_AVAILABLE");
 
     public CampusEvaluationReport evaluateGoal(CampusEventGoal goal) {
         List<CampusEvaluationIssue> issues = new ArrayList<>();
         for (String field : goal.missingFields()) {
-            issues.add(error(
-                    "MISSING_CONSTRAINT",
+            issues.add(warning(
+                    "DEFAULT_ASSUMPTION",
                     "resolve_constraints",
-                    "缺少必要信息：" + field,
-                    false));
+                    "未提供" + field + "，已先按校园活动通用方案处理"));
         }
         for (String validationIssue : goal.validationIssues()) {
             issues.add(error(
@@ -86,8 +85,8 @@ public class CampusPlanEvaluator {
     private void checkRules(JsonNode output, List<CampusEvaluationIssue> issues) {
         JsonNode documents = output.path("documents");
         if (!documents.isArray() || documents.isEmpty()) {
-            issues.add(error("RAG_EMPTY", "retrieve_campus_rules",
-                    "没有检索到校园规则资料", true));
+            issues.add(warning("RAG_EMPTY", "retrieve_campus_rules",
+                    "没有检索到本校规则资料，已保留通用校园规则"));
             return;
         }
         boolean containsTemplate = false;
@@ -115,7 +114,8 @@ public class CampusPlanEvaluator {
             CampusEventGoal goal, JsonNode output, List<CampusEvaluationIssue> issues) {
         String status = output.path("status").asText();
         boolean forecastAvailable = output.path("forecast_available").asBoolean();
-        if (!goal.eventDate().toString().equals(output.path("event_date").asText())) {
+        if (goal.eventDate() != null
+                && !goal.eventDate().toString().equals(output.path("event_date").asText())) {
             issues.add(error("WEATHER_DATE_MISMATCH", "research_weather",
                     "天气评估日期与活动目标日期不一致", true));
         }
