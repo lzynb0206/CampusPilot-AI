@@ -1,6 +1,9 @@
 package com.example.demo.service.audio;
 
 import com.example.demo.config.AudioConfig;
+import com.example.demo.config.ConcurrencyConfig;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
@@ -9,14 +12,25 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.Executor;
+import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.TimeUnit;
 
 @Component
 public class AudioTranscoder {
     private final AudioConfig config;
+    private final Executor taskExecutor;
 
     public AudioTranscoder(AudioConfig config) {
+        this(config, ForkJoinPool.commonPool());
+    }
+
+    @Autowired
+    public AudioTranscoder(
+            AudioConfig config,
+            @Qualifier(ConcurrencyConfig.APPLICATION_TASK_EXECUTOR) Executor taskExecutor) {
         this.config = config;
+        this.taskExecutor = taskExecutor;
     }
 
     public byte[] silkToWav(byte[] silk) throws IOException, InterruptedException {
@@ -62,7 +76,7 @@ public class AudioTranscoder {
             } catch (IOException exception) {
                 throw new CompletionException(exception);
             }
-        });
+        }, taskExecutor);
     }
 
     private byte[] await(CompletableFuture<byte[]> future) throws IOException {

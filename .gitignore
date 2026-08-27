@@ -38,5 +38,6 @@ build/
 
 .env
 downloads/
+data/campus-agent-checkpoints/
 wechat-login-qr.png
 node_modules/

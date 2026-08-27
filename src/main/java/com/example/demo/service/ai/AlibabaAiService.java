@@ -8,6 +8,7 @@ import com.example.demo.tool.ToolCallingEngine;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -31,11 +32,15 @@ public class AlibabaAiService {
     private final ObjectMapper objectMapper;
     private final RestTemplate restTemplate;
 
-    public AlibabaAiService(AiConfig config, ToolCallingEngine toolCallingEngine) {
+    @Autowired
+    public AlibabaAiService(
+            AiConfig config,
+            ToolCallingEngine toolCallingEngine,
+            RestTemplate restTemplate) {
         this.config = config;
         this.toolCallingEngine = toolCallingEngine;
         this.objectMapper = new ObjectMapper();
-        this.restTemplate = new RestTemplate();
+        this.restTemplate = restTemplate;
     }
 
     public boolean isConfigured() {
@@ -43,6 +48,10 @@ public class AlibabaAiService {
     }
 
     public IntentResult recognizeIntent(String text, ReplyMode defaultReplyMode) {
+        IntentResult localIntent = fallbackIntent(text, defaultReplyMode);
+        if (!config.isRemoteIntentClassificationEnabled()) {
+            return localIntent;
+        }
         String systemPrompt = """
                 你是微信机器人的意图分类器。请只输出JSON对象，不要解释。
                 JSON字段必须包含：action、replyMode、content、location。
@@ -80,7 +89,7 @@ public class AlibabaAiService {
             return new IntentResult(action, replyMode, normalizedContent, location);
         } catch (Exception exception) {
             log.warn("千问意图识别失败，使用本地规则兜底", exception);
-            return fallbackIntent(text, defaultReplyMode);
+            return localIntent;
         }
     }
 

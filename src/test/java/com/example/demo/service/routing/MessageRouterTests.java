@@ -14,6 +14,7 @@ import com.example.demo.skill.SkillRegistry;
 import com.example.demo.tool.ToolCallingEngine;
 import com.example.demo.tool.ToolRegistry;
 import org.junit.jupiter.api.Test;
+import org.springframework.web.client.RestTemplate;
 
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -124,7 +125,8 @@ class MessageRouterTests {
         private String lastPrompt = "";
 
         StubAiService() {
-            super(new AiConfig(), new ToolCallingEngine(new ToolRegistry(List.of())));
+            super(new AiConfig(), new ToolCallingEngine(new ToolRegistry(List.of())),
+                    new RestTemplate());
         }
 
         @Override

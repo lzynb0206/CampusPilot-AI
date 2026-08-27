@@ -20,4 +20,5 @@ public class AiConfig {
     private String asrModel = "qwen3-asr-flash";
     private String ttsModel = "cosyvoice-v3-flash";
     private String ttsVoice = "longanyang";
+    private boolean remoteIntentClassificationEnabled = false;
 }

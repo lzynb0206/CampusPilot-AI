@@ -89,6 +89,33 @@ class ToolCallingEngineTests {
                 messages -> message));
     }
 
+    @Test
+    void truncatesOversizedToolResultBeforeNextModelRound() throws Exception {
+        ToolRegistry registry = new ToolRegistry(List.of(
+                new LargeResultTool()));
+        ToolCallingEngine engine = new ToolCallingEngine(registry);
+        AtomicInteger round = new AtomicInteger();
+        JsonNode toolCall = toolCallMessage("large_call", "large_result", Map.of());
+        JsonNode finalAnswer = objectMapper.readTree(
+                "{\"role\":\"assistant\",\"content\":\"已读取截断后的结果。\"}");
+
+        String answer = engine.run(
+                List.of(Map.of("role", "user", "content", "读取大结果")),
+                messages -> {
+                    if (round.getAndIncrement() == 0) {
+                        return toolCall;
+                    }
+                    String result = (String) messages.get(messages.size() - 1).get("content");
+                    assertTrue(result.length() < 9_000);
+                    assertTrue(result.contains("\"truncated\":true"));
+                    assertTrue(result.contains("控制上下文Token"));
+                    return finalAnswer;
+                });
+
+        assertEquals("已读取截断后的结果。", answer);
+        assertEquals(2, round.get());
+    }
+
     private JsonNode temperatureCallUsingPreviousResult(List<Map<String, Object>> messages) {
         try {
             Map<String, Object> weatherMessage = messages.get(messages.size() - 1);
@@ -237,6 +264,28 @@ class ToolCallingEngineTests {
             } finally {
                 activeCalls.decrementAndGet();
             }
+        }
+    }
+
+    private static class LargeResultTool implements BotTool {
+        @Override
+        public String name() {
+            return "large_result";
+        }
+
+        @Override
+        public String description() {
+            return "返回超大测试结果";
+        }
+
+        @Override
+        public Map<String, Object> parametersSchema() {
+            return Map.of("type", "object");
+        }
+
+        @Override
+        public String execute(JsonNode arguments) {
+            return "x".repeat(20_000);
         }
     }
 }

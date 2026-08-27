@@ -10,6 +10,12 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -91,6 +97,91 @@ class CampusAgentOrchestratorTests {
                 .path("unallocated").decimalValue().signum());
     }
 
+    @Test
+    void runsIndependentTasksInSameDependencyLayerConcurrently() {
+        DefaultCampusTaskRunner delegate = defaultRunner();
+        CountDownLatch bothStarted = new CountDownLatch(2);
+        AtomicInteger active = new AtomicInteger();
+        AtomicInteger maximumActive = new AtomicInteger();
+        Set<String> parallelLayer = Set.of("retrieve_campus_rules", "research_weather");
+        CampusTaskRunner runner = (task, context) -> {
+            if (parallelLayer.contains(task.id())) {
+                int current = active.incrementAndGet();
+                maximumActive.accumulateAndGet(current, Math::max);
+                bothStarted.countDown();
+                try {
+                    try {
+                        assertTrue(bothStarted.await(2, TimeUnit.SECONDS),
+                                "同一依赖层的任务没有并行启动");
+                    } catch (InterruptedException exception) {
+                        Thread.currentThread().interrupt();
+                        throw new IllegalStateException("并行测试被中断", exception);
+                    }
+                    return delegate.execute(task, context);
+                } finally {
+                    active.decrementAndGet();
+                }
+            }
+            return delegate.execute(task, context);
+        };
+
+        try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            CampusAgentOrchestrator orchestrator = new CampusAgentOrchestrator(
+                    new CampusGoalParser(),
+                    new CampusTaskPlanner(),
+                    runner,
+                    new CampusPlanEvaluator(),
+                    executor,
+                    CampusAgentCheckpointStore.noop());
+
+            CampusAgentRun run = orchestrator.run(
+                    "帮我策划一场2026年9月20日在苏州举行、50人参加、预算2000元的校园AI技术分享会。");
+
+            assertEquals(CampusAgentRunStatus.COMPLETED, run.status());
+            assertEquals(2, maximumActive.get());
+        }
+    }
+
+    @Test
+    void resumesSuccessfulTasksFromCheckpointAndSkipsRepeatedWeatherCall() {
+        AtomicBoolean budgetAvailable = new AtomicBoolean(false);
+        AtomicInteger weatherCalls = new AtomicInteger();
+        DefaultCampusTaskRunner delegate = defaultRunner(new CountingFixedTool(
+                "assess_event_weather", weatherCalls, weatherTooEarlyResult()));
+        CampusTaskRunner resumableRunner = (task, context) -> {
+            if (task.id().equals("allocate_budget") && !budgetAvailable.get()) {
+                throw new IllegalStateException("模拟预算服务暂时不可用");
+            }
+            return delegate.execute(task, context);
+        };
+        InMemoryCheckpointStore checkpointStore = new InMemoryCheckpointStore();
+
+        try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            CampusAgentOrchestrator orchestrator = new CampusAgentOrchestrator(
+                    new CampusGoalParser(),
+                    new CampusTaskPlanner(),
+                    resumableRunner,
+                    new CampusPlanEvaluator(),
+                    executor,
+                    checkpointStore);
+            String goal = "帮我策划一场2026年9月20日在苏州举行、50人参加、预算2000元的校园AI技术分享会。";
+
+            CampusAgentRun failed = orchestrator.run(goal);
+            assertEquals(CampusAgentRunStatus.FAILED, failed.status());
+            assertTrue(checkpointStore.load(failed.runId()).isPresent());
+            assertEquals(1, weatherCalls.get());
+
+            budgetAvailable.set(true);
+            CampusAgentRun resumed = orchestrator.run(goal);
+
+            assertEquals(CampusAgentRunStatus.COMPLETED, resumed.status());
+            assertTrue(resumed.resumedTaskCount() >= 8);
+            assertEquals(1, weatherCalls.get(), "已成功的天气任务不应重复调用");
+            assertFalse(checkpointStore.load(resumed.runId()).isPresent(),
+                    "完成后应删除检查点");
+        }
+    }
+
     private CampusAgentOrchestrator orchestrator(CampusTaskRunner runner) {
         return new CampusAgentOrchestrator(
                 new CampusGoalParser(),
@@ -150,6 +241,28 @@ class CampusAgentOrchestratorTests {
         public String execute(JsonNode arguments) {
             calls.incrementAndGet();
             return result;
+        }
+    }
+
+    private static class InMemoryCheckpointStore implements CampusAgentCheckpointStore {
+        private CampusAgentCheckpoint checkpoint;
+
+        @Override
+        public synchronized Optional<CampusAgentCheckpoint> load(String runId) {
+            return checkpoint != null && checkpoint.runId().equals(runId)
+                    ? Optional.of(checkpoint) : Optional.empty();
+        }
+
+        @Override
+        public synchronized void save(CampusAgentCheckpoint checkpoint) {
+            this.checkpoint = checkpoint;
+        }
+
+        @Override
+        public synchronized void delete(String runId) {
+            if (checkpoint != null && checkpoint.runId().equals(runId)) {
+                checkpoint = null;
+            }
         }
     }
 }

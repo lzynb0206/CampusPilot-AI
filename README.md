@@ -1,11 +1,25 @@
-# WeChat iLink Multimodal Bot
+# Schoolagent / CampusPilot 校园活动策划 Agent
 
-一个基于 Spring Boot、微信 iLink SDK 和阿里云百炼构建的多模态微信机器人。项目支持文本聊天、图片理解、图片生成、微信语音识别、WAV 语音文件回复、实时天气、联网新闻、文本翻译、Function Calling、自定义 Skill 和关键词 RAG。
+一个基于 Spring Boot 的自主规划型校园活动策划 Agent。用户只需输入一句最终目标，CampusPilot 会解析约束、拆解 11 项任务，连续执行校园规则 RAG、活动日期天气评估、场地分析、流程与人员设计、精确预算、材料生成和风险评估，再经过 Evaluator 检查，最终输出一份完整 Markdown 策划书。
+
+项目同时保留微信 iLink 多模态机器人能力，可通过微信接收目标，并支持普通聊天、图片理解与生成、语音识别与合成、联网新闻、翻译和通用 Function Calling。
 
 ## 功能概览
 
 | 能力 | 实现方式 | 状态 |
 | --- | --- | --- |
+| 校园活动长任务 Agent | 一句话目标 → 11 项任务 → 按依赖执行 → 完整策划书 | 已完成 |
+| 目标约束解析 | 提取活动名称、日期、城市、人数和预算 | 已完成 |
+| Agent 闭环编排 | 任务状态、依赖阻断、Evaluator、最多 2 轮自动修订 | 已完成 |
+| 活动日期天气评估 | 可查时使用逐日预报；太远时生成复查节点和备用方案 | 已完成 |
+| 活动预算分配 | `BigDecimal` 精确分配并校验分项合计 | 已完成 |
+| 校园规则 RAG | 资料来源与 `VERIFIED` / `TEMPLATE` 可信状态 | 已完成 |
+| 完整策划书输出 | 12 个章节的 Markdown 成品与执行记录 | 已完成 |
+| 分层并行调度 | 按任务依赖分层，同层使用 Java 21 虚拟线程并行 | 已完成 |
+| Agent 断点续跑 | 每层原子保存检查点，恢复时跳过已成功任务 | 已完成 |
+| HTTP 连接池 | HttpClient5 共享连接池，连接 5 秒/响应 30 秒超时 | 已完成 |
+| per-user 消息队列 | 同一用户有序、不同用户并发，长任务互不阻塞 | 已完成 |
+| Token 控制 | 本地意图分类、超长工具结果截断 | 已完成 |
 | 微信登录 | iLink SDK + 本地二维码 | 已完成 |
 | 文本收发 | iLink SDK | 已完成 |
 | 普通聊天 | `qwen-flash` | 已完成 |
@@ -30,6 +44,7 @@
 - 微信 iLink SDK 2.3.3
 - 阿里云百炼兼容模式与原生 API
 - 心知天气 V3 API
+- Apache HttpClient5 共享连接池
 - Node.js 18+
 - npm `silk-wasm` 3.7.1
 - Jackson、Lombok、ZXing
@@ -47,9 +62,18 @@
 │   └── decode-silk.mjs                  # SILK → PCM → WAV 解码脚本
 ├── src/main/java/com/example/demo
 │   ├── DemoApplication.java             # Spring Boot 入口
+│   ├── agent/campus
+│   │   ├── CampusAgentOrchestrator.java  # Agent 执行、重试和闭环控制
+│   │   ├── CampusGoalParser.java         # 一句话目标结构化解析
+│   │   ├── CampusTaskPlanner.java        # 11 项任务及依赖规划
+│   │   ├── DefaultCampusTaskRunner.java  # RAG、Tool、Skill 任务执行器
+│   │   ├── CampusPlanEvaluator.java      # 完整性、冲突与幻觉检查
+│   │   └── CampusProposalMarkdownRenderer.java # 完整策划书渲染
 │   ├── config
 │   │   ├── AiConfig.java                # 百炼模型和接口配置
 │   │   ├── AudioConfig.java             # Node 解码器配置
+│   │   ├── ConcurrencyConfig.java        # 全局共享虚拟线程执行器
+│   │   ├── HttpClientConfig.java         # HttpClient5 连接池与超时
 │   │   ├── DailyBriefSkillConfig.java   # 每日简报默认参数
 │   │   ├── RagConfig.java               # RAG 开关和知识库配置
 │   │   └── WeatherConfig.java           # 心知天气配置
@@ -70,16 +94,20 @@
 │   │   ├── audio/AudioTranscoder.java   # Java 与 npm 解码进程通信
 │   │   ├── routing/MessageRouter.java    # Skill → RAG → LLM 总路由
 │   │   ├── weather/WeatherService.java  # 心知天气 HTTP 客户端
+│   │   ├── wechat/PerUserTaskQueue.java # 用户级异步串行队列
 │   │   └── wechat/WechatBotService.java # 微信登录、消息处理和回复
 │   ├── skill
 │   │   ├── BotSkill.java                 # 自定义 Skill 统一接口
 │   │   ├── SkillRegistry.java            # Skill 注册和关键词匹配
+│   │   ├── CampusPlanningAgentSkill.java # 校园活动 Agent 的微信入口
 │   │   └── DailyBriefSkill.java          # 天气 + 新闻每日简报 Skill
 │   └── tool
 │       ├── BotTool.java                 # 工具统一接口
 │       ├── ToolRegistry.java            # 工具注册与参数校验
 │       ├── ToolCallingEngine.java       # 多轮工具调用引擎
 │       ├── WeatherTool.java             # 天气工具
+│       ├── EventWeatherAssessmentTool.java # 活动日期天气评估
+│       ├── EventBudgetTool.java          # 活动预算精确分配
 │       ├── CalculatorTool.java          # 精确计算工具
 │       ├── TemperatureConverterTool.java# 温度换算工具
 │       ├── NewsTool.java                # 联网新闻工具
@@ -155,6 +183,7 @@ weather:
 | --- | --- | --- |
 | `DASHSCOPE_API_KEY` | 空 | 阿里云百炼 API Key |
 | `SENIVERSE_API_KEY` | 空 | 心知天气私钥 |
+| `SENIVERSE_FORECAST_API_URL` | 心知天气逐日预报地址 | 活动日期天气评估 API |
 | `WECHAT_BOT_ENABLED` | `true` | 是否启动微信机器人 |
 | `WECHAT_DOWNLOAD_DIR` | `downloads` | 收到图片后的保存目录 |
 | `WECHAT_QR_CODE_PATH` | `wechat-login-qr.png` | 登录二维码位置 |
@@ -167,6 +196,7 @@ weather:
 | `DASHSCOPE_ASR_MODEL` | `qwen3-asr-flash` | 语音识别模型 |
 | `DASHSCOPE_TTS_MODEL` | `cosyvoice-v3-flash` | 语音合成模型 |
 | `DASHSCOPE_TTS_VOICE` | `longanyang` | 语音合成音色 |
+| `REMOTE_INTENT_CLASSIFICATION_ENABLED` | `false` | 是否额外调用模型做意图分类；默认本地分类以节省 Token |
 | `NODE_EXECUTABLE` | `node` | Node.js 命令或绝对路径 |
 | `SILK_DECODER_SCRIPT` | `scripts/decode-silk.mjs` | npm SILK 解码脚本路径 |
 | `SILK_SAMPLE_RATE` | `24000` | 解码输出采样率 |
@@ -177,6 +207,7 @@ weather:
 | `DAILY_BRIEF_DEFAULT_LOCATION` | `北京` | 每日简报默认城市 |
 | `DAILY_BRIEF_DEFAULT_NEWS_TOPIC` | `人工智能` | 每日简报默认新闻主题 |
 | `DAILY_BRIEF_NEWS_LIMIT` | `3` | 每日简报新闻条数，范围 1～10 |
+| `CAMPUS_AGENT_CHECKPOINT_DIR` | `data/campus-agent-checkpoints` | Campus Agent 断点检查点目录 |
 
 ## 消息处理流程
 
@@ -220,15 +251,73 @@ weather:
 
 需要注意：npm 方案仍然会在运行机器上通过 WebAssembly 完成音频计算，只是不依赖平台相关的本地可执行文件。
 
+## CampusPilot Agent 闭环
+
+### 一句话演示目标
+
+```text
+帮我策划一场2026年9月20日在苏州举行、50人参加、预算2000元的校园AI技术分享会。
+```
+
+CampusPilot 会自动完成以下链路，用户不需要逐步下命令：
+
+```text
+解析活动约束
+  → 检索校园规则（RAG）┐
+  → 评估活动日期天气    ├→ 场地、流程、人员、预算、材料、风险
+                        ┘
+  → Evaluator 检查预算、来源、天气、容量和内容完整性
+  → 可修复错误自动重跑，最多 2 轮
+  → 输出 12 章节完整 Markdown 策划书和任务执行记录
+```
+
+11 项任务分别是：确认约束、检索校园规定、天气评估、场地匹配、活动流程、人员分工、预算分配、宣传报名材料、风险预案、完整性检查、汇总策划书。调度器每轮找出依赖已经满足的一层任务，同层使用共享虚拟线程并行；下一层只有在上游结果汇总后才启动。
+
+### 断点续跑
+
+每完成一层任务，Agent 都会把任务状态、尝试次数和结构化输出原子写入 `data/campus-agent-checkpoints`。如果进程中断或暂时性任务连续失败：
+
+- 重新发送完全相同的最终目标，会自动加载检查点并跳过已成功任务。
+- 失败报告会显示 16 位任务编号，也可以发送 `继续校园任务 任务编号`。
+- 策划书会显示本次恢复了多少项任务。
+- 完整策划书生成成功后自动删除检查点，避免长期使用过期天气或旧资料。
+- 检查点目录已加入 `.gitignore`，不会提交到仓库。
+
+### 防止编造的边界
+
+- 缺少活动名称、日期、城市、人数或预算时，返回 `NEEDS_INPUT`，不调用天气等外部工具。
+- 9 月 20 日等远期日期超出天气预报范围时返回 `TOO_EARLY`，只给复查日期和备用方案，不把当前实况冒充未来预报。
+- 心知天气账号返回范围不足时使用 `RECHECK_REQUIRED`；接口失败时使用 `QUERY_FAILED`。
+- 当前校园制度文档是 `TEMPLATE` 演示资料，策划书会明确标注来源并要求替换为本校正式文件。
+- 场地只生成容量与设备要求，不伪装成已经预约；宣传材料只生成草稿，不自动发布。
+- Evaluator 不通过时不生成最终成品；预算等可修复问题会使相关任务和下游任务自动重跑。
+
+校园 Agent 只在消息同时包含校园、策划和活动信号时触发。因此“帮我策划上海三日游”不会误进入校园活动流程。
+
+## 性能与并发设计
+
+| 优化点 | 改造前 | 当前实现 |
+| --- | --- | --- |
+| HTTP 请求 | 各服务自行创建 `RestTemplate`，没有统一超时 | 单例 `RestTemplate` + HttpClient5 连接池；总连接 100、单路由 20、连接/取连接 5 秒、响应/Socket 30 秒 |
+| Agent 调度 | 9 个业务任务按列表串行运行 | 根据 DAG 依赖动态生成执行层，同层虚拟线程并行 |
+| 消息处理 | iLink 回调线程同步执行完整长任务 | 回调只入队；同一用户串行，不同用户在共享虚拟线程上并发 |
+| 工具与简报 | 每次请求创建并关闭一个虚拟线程执行器 | Spring 单例共享虚拟线程执行器，应用关闭时统一释放 |
+| 语音管道 | `CompletableFuture` 使用默认公共线程池 | 读 stdout/stderr 也使用应用共享虚拟线程执行器 |
+| 意图识别 Token | 普通消息先调用一次分类模型，再调用聊天模型 | 默认本地规则分类，普通请求减少一次模型调用；需要时可打开远程分类 |
+| 工具结果 Token | 超大工具结果完整加入下一轮上下文 | 单个结果最多保留 8000 字符，并标明原始长度及截断状态 |
+
+全局执行器“共享”的是执行器生命周期和任务调度，不是复用虚拟线程本身；Java 虚拟线程仍然按任务创建，适合这些以 HTTP 和文件等待为主的 I/O 任务。
+
 ## Skill 与 RAG
 
 ### Tool、Skill、RAG 分别解决什么问题？
 
 | 机制 | 主要职责 | 谁决定是否执行 | 本项目示例 |
 | --- | --- | --- | --- |
-| Tool | 提供单一、可复用的原子能力 | LLM 根据 Function Calling 描述选择 | 天气、新闻、翻译、计算 |
-| Skill | 固化一个高频业务流程，可组合多个 Tool | Java 关键词路由直接命中 | 每日简报同时执行天气和新闻 |
-| RAG | 为模型补充外部或项目私有知识 | Java 先检索，命中后增强 Prompt | 配置、语音链路、RAG/Skill 项目知识 |
+| Tool | 提供单一、可复用的原子能力 | 编排器或 LLM 调用 | 活动天气、预算、新闻、翻译、计算 |
+| Skill | 提供可直接路由的完整业务入口，可组合多个任务和 Tool | Java 关键词和业务信号命中 | 校园活动 Agent、每日简报 |
+| RAG | 为任务补充外部或项目私有知识 | Java 先检索，再交给任务执行器或 LLM | 校园活动规则、配置与项目知识 |
+| Agent | 根据最终目标拆任务、管理依赖、调用能力、检查并交付成品 | `CampusAgentOrchestrator` | CampusPilot 完整活动策划书 |
 
 现有 Tool 并不是“不满足条件”。它们适合参数开放、组合方式不固定的任务，但高频固定流程如果每次都让模型重新规划，会增加模型判断、Token 消耗和结果不确定性。Skill 把已知流程固化，能让系统表现得更稳定、更快、更可控；它提升的是应用层的任务执行能力，并不会直接提升大模型本身的推理能力。
 
@@ -264,7 +353,7 @@ Skill 优先于 RAG。例如一句话同时包含“每日简报”和“RAG”�
 
 ### 极简关键词 RAG
 
-知识库存放在 `src/main/resources/rag/knowledge-base.json`。每条文档包含 `id`、`title`、`keywords` 和 `content`。检索过程如下：
+知识库存放在 `src/main/resources/rag/knowledge-base.json`。每条文档包含 `id`、`title`、`keywords`、`content`、`source` 和 `status`。`source` 记录资料来源，`status` 为 `VERIFIED` 或 `TEMPLATE`；演示模板必须标记为待核验，不能当成真实校规。检索过程如下：
 
 ```text
 用户问题标准化
@@ -336,6 +425,8 @@ RAG_ENABLED=false ./mvnw spring-boot:run
 | 工具名称 | Java 类 | 用途 |
 | --- | --- | --- |
 | `get_current_weather` | `WeatherTool` | 查询指定城市或区县的实时天气 |
+| `assess_event_weather` | `EventWeatherAssessmentTool` | 查询活动日期逐日预报，或生成复查节点与备用方案 |
+| `allocate_event_budget` | `EventBudgetTool` | 精确分配活动预算并保证分项合计等于总额 |
 | `calculate` | `CalculatorTool` | 使用 `BigDecimal` 完成精确加减乘除 |
 | `convert_temperature` | `TemperatureConverterTool` | 在摄氏度、华氏度、开尔文之间换算 |
 | `search_news` | `NewsTool` | 通过百炼联网搜索查询带来源链接的近期新闻 |
@@ -380,6 +471,8 @@ RAG_ENABLED=false ./mvnw spring-boot:run
 - `查询今天的人工智能新闻，返回 3 条并附来源`
 - `把“你好，世界”翻译成英文`
 - `生成每日简报 城市=上海，主题=大模型`
+- `帮我策划一场2026年9月20日在苏州举行、50人参加、预算2000元的校园AI技术分享会。`
+- `帮我策划一次校园技术活动`（演示缺少约束时主动追问）
 - `RAG是什么，它在这个项目中怎么实现？`
 - `API Key应该配置在哪里？`
 - `用语音介绍一下杭州`
@@ -414,6 +507,20 @@ npm run audio:check
 - 天气、计算器、温度换算、联网新闻和文本翻译
 - 天气 → 温度换算的多步工具调用
 - 每日简报 Skill 的天气、新闻组合结果
+- CampusPilot 完整目标生成 12 章节策划书
+- CampusPilot 缺少约束时不调用外部工具
+- 远期天气不生成虚构预报，并包含复查节点和室内备用方案
+- 校园规则模板始终显示来源和 `TEMPLATE` 状态
+- 预算分项、已分配金额和总预算完全一致
+- Evaluator 发现可修复错误后自动重跑相关任务
+- 同层 RAG 与天气任务确实并行启动
+- 检查点可跨运行恢复成功任务，并避免重复天气调用
+- 检查点采用临时文件加原子替换，非法任务编号不能越过目录
+- 同一微信用户消息保持顺序，不同用户不会互相阻塞
+- HttpClient5 连接池容量和 5 秒/30 秒超时配置
+- 超大工具结果进入下一轮前会被截断
+- 默认本地意图分类在没有 API Key 时也能识别聊天、天气和生图
+- 非校园策划请求不会误触发 CampusPilot
 - RAG 开启时命中知识库，关闭时回退 LLM
 - 同时包含 Skill 与 RAG 关键词时优先执行 Skill
 - API Key 缺失和第三方 API 异常提示

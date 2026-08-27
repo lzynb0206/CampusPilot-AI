@@ -3,6 +3,7 @@ package com.example.demo.service.weather;
 import com.example.demo.config.WeatherConfig;
 import com.example.demo.model.DailyWeatherForecast;
 import org.junit.jupiter.api.Test;
+import org.springframework.web.client.RestTemplate;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -12,7 +13,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class WeatherServiceForecastTests {
-    private final WeatherService service = new WeatherService(new WeatherConfig());
+    private final WeatherService service = new WeatherService(
+            new WeatherConfig(), new RestTemplate());
 
     @Test
     void parsesTargetDateFromOfficialDailyResponseShape() {

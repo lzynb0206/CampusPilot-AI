@@ -5,6 +5,7 @@ import com.example.demo.service.ai.AlibabaToolService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
+import org.springframework.web.client.RestTemplate;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -41,7 +42,7 @@ class TranslationToolTests {
         private String target;
 
         StubAlibabaToolService() {
-            super(new AiConfig());
+            super(new AiConfig(), new RestTemplate());
         }
 
         @Override

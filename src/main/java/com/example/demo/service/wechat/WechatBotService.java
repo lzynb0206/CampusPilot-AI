@@ -35,6 +35,7 @@ public class WechatBotService implements DisposableBean {
     private final AlibabaAiService aiService;
     private final AudioTranscoder audioTranscoder;
     private final MessageRouter messageRouter;
+    private final PerUserTaskQueue userTaskQueue;
     private ILinkClient client;
     private ExecutorService botExecutor;
 
@@ -50,10 +51,12 @@ public class WechatBotService implements DisposableBean {
     public WechatBotService(
             AlibabaAiService aiService,
             AudioTranscoder audioTranscoder,
-            MessageRouter messageRouter) {
+            MessageRouter messageRouter,
+            PerUserTaskQueue userTaskQueue) {
         this.aiService = aiService;
         this.audioTranscoder = audioTranscoder;
         this.messageRouter = messageRouter;
+        this.userTaskQueue = userTaskQueue;
     }
 
     @EventListener(ApplicationReadyEvent.class)
@@ -64,7 +67,7 @@ public class WechatBotService implements DisposableBean {
         }
         botExecutor = Executors.newSingleThreadExecutor(task -> {
             Thread thread = new Thread(task, "wechat-ilink-login");
-            thread.setDaemon(true);
+            thread.setDaemon(false);
             return thread;
         });
         botExecutor.submit(this::startBot);
@@ -87,7 +90,12 @@ public class WechatBotService implements DisposableBean {
                     @Override
                     public void onMessages(List<WeixinMessage> messages) {
                         for (WeixinMessage message : messages) {
-                            processMessage(message);
+                            String userId = message.getFrom_user_id();
+                            userTaskQueue.submit(userId, () -> processMessage(message))
+                                    .exceptionally(exception -> {
+                                        log.error("用户消息队列任务异常 userId={}", userId, exception);
+                                        return null;
+                                    });
                         }
                     }
                 })

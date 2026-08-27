@@ -27,6 +27,7 @@ dashscope:
   asr-model: ${DASHSCOPE_ASR_MODEL:qwen3-asr-flash}
   tts-model: ${DASHSCOPE_TTS_MODEL:cosyvoice-v3-flash}
   tts-voice: ${DASHSCOPE_TTS_VOICE:longanyang}
+  remote-intent-classification-enabled: ${REMOTE_INTENT_CLASSIFICATION_ENABLED:false}
 
 audio:
   node-executable: ${NODE_EXECUTABLE:node}
@@ -49,3 +50,7 @@ skills:
     default-location: ${DAILY_BRIEF_DEFAULT_LOCATION:北京}
     default-news-topic: ${DAILY_BRIEF_DEFAULT_NEWS_TOPIC:人工智能}
     news-limit: ${DAILY_BRIEF_NEWS_LIMIT:3}
+
+agent:
+  campus:
+    checkpoint-dir: ${CAMPUS_AGENT_CHECKPOINT_DIR:data/campus-agent-checkpoints}

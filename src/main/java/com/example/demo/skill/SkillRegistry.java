@@ -47,7 +47,9 @@ public class SkillRegistry {
         SkillKeyword bestMatch = null;
         int bestLength = -1;
         for (Map.Entry<String, SkillKeyword> entry : keywords.entrySet()) {
-            if (normalizedMessage.contains(entry.getKey()) && entry.getKey().length() > bestLength) {
+            if (normalizedMessage.contains(entry.getKey())
+                    && entry.getValue().skill().matches(userMessage)
+                    && entry.getKey().length() > bestLength) {
                 bestMatch = entry.getValue();
                 bestLength = entry.getKey().length();
             }

@@ -10,4 +10,8 @@ public interface BotSkill {
     List<String> keywords();
 
     String execute(String userMessage);
+
+    default boolean matches(String userMessage) {
+        return true;
+    }
 }

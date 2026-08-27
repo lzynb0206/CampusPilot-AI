@@ -27,11 +27,7 @@ public class WeatherService implements WeatherForecastProvider {
     private final RestTemplate restTemplate;
 
     @Autowired
-    public WeatherService(WeatherConfig config) {
-        this(config, new RestTemplate());
-    }
-
-    WeatherService(WeatherConfig config, RestTemplate restTemplate) {
+    public WeatherService(WeatherConfig config, RestTemplate restTemplate) {
         this.config = config;
         this.objectMapper = new ObjectMapper();
         this.restTemplate = restTemplate;

@@ -1,9 +1,12 @@
 package com.example.demo.tool;
 
+import com.example.demo.config.ConcurrencyConfig;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
@@ -12,7 +15,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.Future;
 import java.util.function.Function;
 
@@ -21,12 +24,23 @@ import java.util.function.Function;
 public class ToolCallingEngine {
     private static final int MAX_TOOL_ROUNDS = 6;
     private static final int MAX_TOOL_CALLS_PER_ROUND = 8;
+    private static final int MAX_TOOL_RESULT_CHARACTERS = 8_000;
     private final ToolRegistry toolRegistry;
     private final ObjectMapper objectMapper;
+    private final ExecutorService taskExecutor;
 
     public ToolCallingEngine(ToolRegistry toolRegistry) {
+        this(toolRegistry, ForkJoinPool.commonPool());
+    }
+
+    @Autowired
+    public ToolCallingEngine(
+            ToolRegistry toolRegistry,
+            @Qualifier(ConcurrencyConfig.APPLICATION_TASK_EXECUTOR)
+            ExecutorService taskExecutor) {
         this.toolRegistry = toolRegistry;
         this.objectMapper = new ObjectMapper();
+        this.taskExecutor = taskExecutor;
     }
 
     public List<Map<String, Object>> toolDefinitions() {
@@ -68,10 +82,10 @@ public class ToolCallingEngine {
         }
 
         log.info("开始并行执行工具 count={}", toolCalls.size());
-        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+        try {
             List<Future<Map<String, Object>>> futures = new ArrayList<>();
             for (JsonNode toolCall : toolCalls) {
-                futures.add(executor.submit(() -> executeToolCall(toolCall)));
+                futures.add(taskExecutor.submit(() -> executeToolCall(toolCall)));
             }
 
             List<Map<String, Object>> results = new ArrayList<>(futures.size());
@@ -100,7 +114,7 @@ public class ToolCallingEngine {
                 : argumentsNode.toString();
         String result;
         try {
-            result = toolRegistry.execute(toolName, arguments);
+            result = compactToolResult(toolRegistry.execute(toolName, arguments));
             log.info("工具执行成功 tool={}", toolName);
         } catch (Exception exception) {
             result = errorResult(exception);
@@ -131,6 +145,22 @@ public class ToolCallingEngine {
             ));
         } catch (Exception ignored) {
             return "{\"success\":false,\"error\":\"工具执行失败\"}";
+        }
+    }
+
+    private String compactToolResult(String result) {
+        if (result == null || result.length() <= MAX_TOOL_RESULT_CHARACTERS) {
+            return result;
+        }
+        try {
+            return objectMapper.writeValueAsString(Map.of(
+                    "truncated", true,
+                    "original_characters", result.length(),
+                    "content_preview", result.substring(0, MAX_TOOL_RESULT_CHARACTERS),
+                    "notice", "工具结果过长，已截断以控制上下文Token"
+            ));
+        } catch (Exception exception) {
+            return result.substring(0, MAX_TOOL_RESULT_CHARACTERS);
         }
     }
 }

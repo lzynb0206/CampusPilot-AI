@@ -1,9 +1,12 @@
 package com.example.demo.skill;
 
+import com.example.demo.config.ConcurrencyConfig;
 import com.example.demo.config.DailyBriefSkillConfig;
 import com.example.demo.tool.ToolRegistry;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
@@ -11,7 +14,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.Future;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -25,11 +28,22 @@ public class DailyBriefSkill implements BotSkill {
     private final DailyBriefSkillConfig config;
     private final ToolRegistry toolRegistry;
     private final ObjectMapper objectMapper;
+    private final ExecutorService taskExecutor;
 
     public DailyBriefSkill(DailyBriefSkillConfig config, ToolRegistry toolRegistry) {
+        this(config, toolRegistry, ForkJoinPool.commonPool());
+    }
+
+    @Autowired
+    public DailyBriefSkill(
+            DailyBriefSkillConfig config,
+            ToolRegistry toolRegistry,
+            @Qualifier(ConcurrencyConfig.APPLICATION_TASK_EXECUTOR)
+            ExecutorService taskExecutor) {
         this.config = config;
         this.toolRegistry = toolRegistry;
         this.objectMapper = new ObjectMapper();
+        this.taskExecutor = taskExecutor;
     }
 
     @Override
@@ -53,10 +67,10 @@ public class DailyBriefSkill implements BotSkill {
         String topic = extract(TOPIC, userMessage, config.getDefaultNewsTopic());
         int newsLimit = Math.max(1, Math.min(config.getNewsLimit(), 10));
 
-        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
-            Future<String> weatherFuture = executor.submit(() -> executeToolSafely(
+        try {
+            Future<String> weatherFuture = taskExecutor.submit(() -> executeToolSafely(
                     "get_current_weather", Map.of("location", location)));
-            Future<String> newsFuture = executor.submit(() -> executeToolSafely(
+            Future<String> newsFuture = taskExecutor.submit(() -> executeToolSafely(
                     "search_news", Map.of("query", topic, "limit", newsLimit)));
             String weather = weatherFuture.get();
             String news = newsFuture.get();

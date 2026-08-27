@@ -3,6 +3,7 @@ package com.example.demo.service.ai;
 import com.example.demo.config.AiConfig;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -21,10 +22,11 @@ public class AlibabaToolService {
     private final ObjectMapper objectMapper;
     private final RestTemplate restTemplate;
 
-    public AlibabaToolService(AiConfig config) {
+    @Autowired
+    public AlibabaToolService(AiConfig config, RestTemplate restTemplate) {
         this.config = config;
         this.objectMapper = new ObjectMapper();
-        this.restTemplate = new RestTemplate();
+        this.restTemplate = restTemplate;
     }
 
     public String searchNews(String query, int limit) {
