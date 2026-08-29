@@ -40,6 +40,13 @@ weather:
   api-url: ${SENIVERSE_API_URL:https://api.seniverse.com/v3/weather/now.json}
   forecast-api-url: ${SENIVERSE_FORECAST_API_URL:https://api.seniverse.com/v3/weather/daily.json}
 
+amap:
+  api-key: ${AMAP_WEB_SERVICE_API_KEY:}
+  geocode-api-url: ${AMAP_GEOCODE_API_URL:https://restapi.amap.com/v3/geocode/geo}
+  place-around-api-url: ${AMAP_PLACE_AROUND_API_URL:https://restapi.amap.com/v5/place/around}
+  search-radius-meters: ${AMAP_CAMPUS_SEARCH_RADIUS_METERS:2500}
+  max-candidates: ${AMAP_CAMPUS_MAX_CANDIDATES:6}
+
 rag:
   enabled: ${RAG_ENABLED:true}
   knowledge-base: ${RAG_KNOWLEDGE_BASE:classpath:rag/knowledge-base.json}

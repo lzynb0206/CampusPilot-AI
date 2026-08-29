@@ -19,6 +19,7 @@ Many chatbot demos stop at a single LLM request. CampusPilot AI implements the s
 - **Multi-turn campus planning** — remembers the current event per WeChat contact and merges natural-language updates such as `人数改80` or `换到西区食堂三楼`.
 - **Dependency-aware agent orchestration** — decomposes a planning goal into a 12-task DAG covering rules, weather, venue, agenda, staffing, supplies, budget, publicity, and risk.
 - **Evaluator-driven output** — validates dates, capacity, weather alignment, budget arithmetic, task completeness, and source boundaries before rendering a proposal.
+- **Live campus venue discovery** — locates a named school with AMap and turns nearby building, hall, and sports-field POIs into concrete candidates with map links.
 - **Safe generic defaults** — produces a useful plan even when details are missing, while clearly marking assumptions instead of blocking the user.
 - **RAG with trust labels** — separates `VERIFIED` project knowledge from `TEMPLATE` campus guidance so demo material is not presented as a real university policy.
 - **Parallel tool execution** — uses Java 21 virtual threads for independent tool calls and same-layer agent tasks.
@@ -138,6 +139,7 @@ The final proposal contains:
 | Retrieval | Local JSON keyword RAG with `VERIFIED` and `TEMPLATE` trust states |
 | WeChat integration | `wechat-ilink-sdk` 2.3.3 |
 | Weather | Seniverse current weather and daily forecast APIs |
+| Campus maps | AMap Web Service geocoding, Places 2.0 nearby search, and marker URI links |
 | HTTP | Spring `RestTemplate`, Apache HttpClient 5 connection pool |
 | Serialization | Jackson |
 | Voice pipeline | Node.js 18+, `silk-wasm` 3.7.1, Qwen ASR, CosyVoice TTS |
@@ -175,6 +177,7 @@ The final proposal contains:
 - Node.js 18 or later for WeChat SILK voice decoding
 - An Alibaba Cloud Model Studio API key
 - A Seniverse private API key if weather features are required
+- An AMap Web Service API key if real campus venue candidates are required
 - A WeChat account supported by the configured iLink SDK login flow
 
 ### 1. Clone the repository
@@ -200,6 +203,7 @@ Environment variables are the simplest option:
 ```bash
 export DASHSCOPE_API_KEY="your-dashscope-api-key"
 export SENIVERSE_API_KEY="your-seniverse-private-key"
+export AMAP_WEB_SERVICE_API_KEY="your-amap-web-service-key"
 export WECHAT_BOT_ENABLED=true
 ```
 
@@ -215,6 +219,9 @@ dashscope:
 
 weather:
   api-key: your-seniverse-private-key
+
+amap:
+  api-key: your-amap-web-service-key
 ```
 
 Do not commit API keys, local configuration files, QR codes, downloaded media, or generated checkpoint data.
@@ -259,6 +266,9 @@ Scan it with WeChat and keep the application running. With the default configura
 | `DASHSCOPE_TTS_MODEL` | `cosyvoice-v3-flash` | Text-to-speech model |
 | `REMOTE_INTENT_CLASSIFICATION_ENABLED` | `false` | Enables model-based intent classification after local rules |
 | `SENIVERSE_API_KEY` | empty | Seniverse private API key |
+| `AMAP_WEB_SERVICE_API_KEY` | empty | AMap Web Service key used for school geocoding and nearby campus POIs |
+| `AMAP_CAMPUS_SEARCH_RADIUS_METERS` | `2500` | Radius around the located school point, clamped to 100–50,000 metres |
+| `AMAP_CAMPUS_MAX_CANDIDATES` | `6` | Maximum map-backed venue candidates, clamped to 1–10 |
 | `RAG_ENABLED` | `true` | Enables the local keyword knowledge base |
 | `RAG_KNOWLEDGE_BASE` | `classpath:rag/knowledge-base.json` | Knowledge-base location |
 | `RAG_MAX_RESULTS` | `3` | Maximum retrieved documents, capped at 10 |
@@ -268,6 +278,18 @@ Scan it with WeChat and keep the application running. With the default configura
 | `SILK_DECODE_TIMEOUT_SECONDS` | `30` | Voice decode timeout |
 
 All model names and service endpoints can also be overridden in `application.yaml` or with their corresponding environment variables.
+
+### Campus venue lookup
+
+Create a **Web Service API** key in the [AMap developer console](https://console.amap.com/), then set `AMAP_WEB_SERVICE_API_KEY`. When an activity has a school but no confirmed venue, the agent:
+
+1. geocodes the school name, using the city when one is available;
+2. searches nearby AMap POIs with both the school name and an activity-specific keyword;
+3. removes gates, parking, accommodation, shops, and other unsuitable POIs;
+4. ranks concrete buildings or spaces and returns clickable AMap marker links;
+5. falls back to the existing generic venue types if the key is missing, the school cannot be located, or AMap is unavailable.
+
+AMap POIs establish a candidate's name and approximate location only. The system deliberately leaves capacity, equipment, opening hours, campus affiliation, and booking status unverified. If a university has multiple campuses, users should provide the campus name or city to avoid resolving the wrong location. AMap currently describes Places 2.0 as an advanced service, so confirm the production quota and account eligibility before launch.
 
 ## Customizing the Campus Knowledge Base
 
@@ -300,6 +322,7 @@ src/main/java/com/example/demo
 │   ├── ai             # Qwen/DashScope chat and multimodal clients
 │   ├── audio          # SILK-to-WAV process bridge
 │   ├── routing        # Message router and per-contact campus conversation memory
+│   ├── venue          # AMap school geocoding, campus POI filtering, and ranking
 │   ├── weather        # Seniverse current and daily weather clients
 │   └── wechat         # iLink lifecycle, message handling, and per-user queue
 ├── skill              # Deterministic, reusable business workflows
@@ -326,6 +349,7 @@ scripts
 - Messages from one WeChat contact remain ordered; different contacts can run independently.
 - The bot drafts publicity and registration content but does not publish it automatically.
 - The agent does not reserve venues, make purchases, process payments, or claim that an external action has completed.
+- Map results are treated as unverified candidates; a POI result never implies that the room is available or large enough.
 
 ## Known Limitations
 
@@ -333,6 +357,7 @@ scripts
 - Conversation memory is stored in the current process and is cleared when the application restarts.
 - The included RAG implementation uses keyword matching rather than embeddings or a vector database.
 - School-specific rules must be supplied by the deployer; bundled campus documents are demonstration templates.
+- AMap may not expose every internal classroom or room-level detail, and a school name without a campus can resolve to the wrong campus.
 - Voice replies are sent as WAV files rather than native WeChat voice bubbles.
 - The WeChat integration uses a third-party iLink SDK and is not an official WeChat product. Review the SDK and platform terms before deployment.
 
@@ -358,7 +383,7 @@ Issues and pull requests are welcome. For a code change:
 
 See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for dependency notices.
 
-CampusPilot AI is an independent open-source project and is not affiliated with or endorsed by WeChat, Tencent, Alibaba Cloud, Qwen, Seniverse, or any university.
+CampusPilot AI is an independent open-source project and is not affiliated with or endorsed by WeChat, Tencent, Alibaba Cloud, AMap, Qwen, Seniverse, or any university.
 
 ## License
 

@@ -3,11 +3,17 @@ package com.example.demo.agent.campus;
 import com.example.demo.rag.KeywordRagService;
 import com.example.demo.rag.KnowledgeStatus;
 import com.example.demo.rag.RagHit;
+import com.example.demo.service.venue.CampusVenueCandidate;
+import com.example.demo.service.venue.CampusVenuePreference;
+import com.example.demo.service.venue.CampusVenueSearchProvider;
+import com.example.demo.service.venue.CampusVenueSearchResult;
+import com.example.demo.service.venue.CampusVenueSearchStatus;
 import com.example.demo.tool.ToolRegistry;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalTime;
@@ -27,13 +33,23 @@ public class DefaultCampusTaskRunner implements CampusTaskRunner {
 
     private final KeywordRagService ragService;
     private final ToolRegistry toolRegistry;
+    private final CampusVenueSearchProvider venueSearchProvider;
     private final ObjectMapper objectMapper = new ObjectMapper();
+
+    @Autowired
+    public DefaultCampusTaskRunner(
+            KeywordRagService ragService,
+            ToolRegistry toolRegistry,
+            CampusVenueSearchProvider venueSearchProvider) {
+        this.ragService = ragService;
+        this.toolRegistry = toolRegistry;
+        this.venueSearchProvider = venueSearchProvider;
+    }
 
     public DefaultCampusTaskRunner(
             KeywordRagService ragService,
             ToolRegistry toolRegistry) {
-        this.ragService = ragService;
-        this.toolRegistry = toolRegistry;
+        this(ragService, toolRegistry, CampusVenueSearchProvider.disabled());
     }
 
     @Override
@@ -141,6 +157,7 @@ public class DefaultCampusTaskRunner implements CampusTaskRunner {
         result.put("minimum_capacity", minimumCapacity);
         result.put("booking_completed", false);
         VenueRecommendation recommendation = recommendVenue(goal.rawGoal());
+        CampusVenueSearchResult mapResult = null;
         if (goal.venue() != null) {
             String exactVenue = displayVenue(goal.school(), goal.venue());
             recommendation = new VenueRecommendation(
@@ -149,6 +166,26 @@ public class DefaultCampusTaskRunner implements CampusTaskRunner {
                     List.of(exactVenue),
                     recommendation.requirements());
             result.put("status", "USER_PROVIDED");
+            result.put("map_search_status", "SKIPPED_USER_PROVIDED");
+        } else if (goal.school() != null) {
+            mapResult = venueSearchProvider.search(
+                    goal.school(), goal.city(), venuePreference(goal.rawGoal()));
+            result.put("map_search_status", mapResult.status().name());
+            putNullable(result, "map_provider", mapResult.provider());
+            putNullable(result, "school_map_address", mapResult.schoolAddress());
+            putNullable(result, "school_map_location", mapResult.schoolLocation());
+            result.set("candidate_venues", venueCandidates(mapResult.candidates()));
+            if (mapResult.status() == CampusVenueSearchStatus.AVAILABLE) {
+                CampusVenueCandidate first = mapResult.candidates().getFirst();
+                recommendation = new VenueRecommendation(
+                        first.name(),
+                        "已按活动类型从学校附近的地图 POI 中筛选，优先展示匹配度较高的候选点",
+                        mapResult.candidates().stream().map(CampusVenueCandidate::name).toList(),
+                        recommendation.requirements());
+                result.put("status", "MAP_CANDIDATES");
+            }
+        } else {
+            result.put("map_search_status", "SKIPPED_NO_SCHOOL");
         }
         result.put("recommended_area", recommendation.area());
         result.put("recommendation_reason", recommendation.reason());
@@ -157,9 +194,46 @@ public class DefaultCampusTaskRunner implements CampusTaskRunner {
         result.set("requirements", stringArray(recommendation.requirements().stream()
                 .map(requirement -> requirement.replace("{capacity}", String.valueOf(minimumCapacity)))
                 .toList()));
-        result.put("notice", goal.venue() == null
+        String notice = goal.venue() == null
                 ? "先确定到校园区域和场地类型即可，具体楼号、教室号或场地名称可后续补充。"
-                : "场地已更新；落地前再确认具体房间号、预约时段和设备开放情况。");
+                : "场地已更新；落地前再确认具体房间号、预约时段和设备开放情况。";
+        if (mapResult != null) {
+            notice = mapResult.message();
+        }
+        result.put("notice", notice);
+        return result;
+    }
+
+    private CampusVenuePreference venuePreference(String rawGoal) {
+        if (isSportsOrOutdoor(rawGoal)) {
+            return CampusVenuePreference.SPORTS;
+        }
+        if (isPerformance(rawGoal)) {
+            return CampusVenuePreference.PERFORMANCE;
+        }
+        return CampusVenuePreference.GENERAL;
+    }
+
+    private ArrayNode venueCandidates(List<CampusVenueCandidate> candidates) {
+        ArrayNode result = objectMapper.createArrayNode();
+        for (CampusVenueCandidate candidate : candidates) {
+            ObjectNode item = result.addObject();
+            putNullable(item, "id", candidate.id());
+            item.put("name", candidate.name());
+            putNullable(item, "address", candidate.address());
+            putNullable(item, "location", candidate.location());
+            if (candidate.distanceMeters() == null) {
+                item.putNull("distance_meters");
+            } else {
+                item.put("distance_meters", candidate.distanceMeters());
+            }
+            putNullable(item, "type", candidate.type());
+            putNullable(item, "map_url", candidate.mapUrl());
+            item.put("school_affiliation_needs_verification",
+                    candidate.schoolAffiliationNeedsVerification());
+            item.put("capacity_verified", false);
+            item.put("availability_verified", false);
+        }
         return result;
     }
 

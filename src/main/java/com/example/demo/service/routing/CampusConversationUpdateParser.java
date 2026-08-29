@@ -58,7 +58,7 @@ public class CampusConversationUpdateParser {
         CampusEventGoal parsed = goalParser.parse(text);
         String venue = extractVenue(text);
         String school = extractSchool(text, venue);
-        if (venue != null && venue.equals(school)) {
+        if (isSchoolOnlyVenue(venue, school)) {
             venue = null;
         }
         return new CampusConversationUpdate(
@@ -144,6 +144,17 @@ public class CampusConversationUpdateParser {
         return matcher.find() ? matcher.group(1).trim() : null;
     }
 
+    private boolean isSchoolOnlyVenue(String venue, String school) {
+        if (venue == null || school == null) {
+            return false;
+        }
+        String remainder = venue.replace(school, "")
+                .replaceAll("^(?:我(?:们)?(?:是?在|是|来自|就读于)|来自|就读于)", "")
+                .replaceAll("(?:的学生|学生|的)$", "")
+                .replaceAll("[\\s，。；;]+", "");
+        return remainder.isEmpty();
+    }
+
     private boolean isVenueCandidate(String candidate) {
         return candidate != null && !candidate.isBlank()
                 && !containsAny(candidate, QUESTION_SIGNALS)
@@ -155,7 +166,7 @@ public class CampusConversationUpdateParser {
             return null;
         }
         return value.trim()
-                .replaceFirst("^(?:改为|改成|改到|换为|换成|换到|移到|我(?:们)?(?:是)?在|活动(?:安排)?在|安排在|定在|在)", "")
+                .replaceFirst("^(?:改为|改成|改到|换为|换成|换到|移到|我(?:们)?(?:是?在|是|来自|就读于)|活动(?:安排)?在|安排在|定在|来自|就读于|在)", "")
                 .replaceFirst("(?:举行|举办|开展|进行)$", "")
                 .replaceAll("^[：:=\\s]+|[：:=\\s，。；;]+$", "")
                 .replaceAll("\\s+", "")

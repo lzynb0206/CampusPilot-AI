@@ -96,4 +96,14 @@ class CampusGoalParserTests {
         assertEquals(LocalTime.of(15, 30), goal.startTime());
         assertNull(goal.city());
     }
+
+    @Test
+    void understandsNaturalSchoolSelfIntroductionWithoutInventingAVenue() {
+        CampusEventGoal goal = parser.parse(
+                "帮我策划一次校园技术活动，我是南京信息工程大学的");
+
+        assertEquals("南京信息工程大学", goal.school());
+        assertNull(goal.venue());
+        assertNull(goal.city());
+    }
 }

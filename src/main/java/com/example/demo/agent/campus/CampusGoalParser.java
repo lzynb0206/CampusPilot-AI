@@ -27,6 +27,15 @@ public class CampusGoalParser {
             "(?:在|地点\\s*[=：:]\\s*)([\\p{IsHan}]{2,20}?)(?:市)?(?:举办|举行|开展|组织)");
     private static final Pattern SCHOOL = Pattern.compile(
             "(?:学校|院校)\\s*[=：:]\\s*([^，。；;]{2,60})");
+    private static final Pattern DECLARED_SCHOOL = Pattern.compile(
+            "(?:我(?:们)?(?:是?在|是|来自|就读于)|来自|就读于)\\s*"
+                    + "([\\p{IsHan}A-Za-z0-9]{2,30}?(?:大学|学院|学校)"
+                    + "(?:[\\p{IsHan}A-Za-z0-9]{0,12}校区)?)");
+    private static final Pattern PLANNING_AT_SCHOOL = Pattern.compile(
+            "(?:在|于)\\s*"
+                    + "([\\p{IsHan}A-Za-z0-9]{2,30}?(?:大学|学院|学校)"
+                    + "(?:[\\p{IsHan}A-Za-z0-9]{0,12}校区)?)"
+                    + "(?=举办|举行|开展|组织|校内|[，。；;])");
     private static final Pattern VENUE = Pattern.compile(
             "(?:活动)?(?:场地|地点)\\s*[=：:]\\s*([^，。；;]{1,80})");
     private static final Pattern START_TIME = Pattern.compile(
@@ -64,7 +73,7 @@ public class CampusGoalParser {
         String eventName = extractEventName(goal);
         LocalDate eventDate = extractDate(goal, validationIssues);
         String city = extractCity(goal);
-        String school = firstGroup(SCHOOL, goal);
+        String school = extractSchool(goal);
         String venue = firstGroup(VENUE, goal);
         LocalTime startTime = extractStartTime(goal, validationIssues);
         Integer participantCount = extractParticipantCount(goal, validationIssues);
@@ -143,6 +152,15 @@ public class CampusGoalParser {
             return null;
         }
         return value;
+    }
+
+    private String extractSchool(String goal) {
+        String explicit = firstGroup(SCHOOL, goal);
+        if (explicit != null) {
+            return explicit;
+        }
+        String declared = firstGroup(DECLARED_SCHOOL, goal);
+        return declared != null ? declared : firstGroup(PLANNING_AT_SCHOOL, goal);
     }
 
     private LocalTime extractStartTime(String goal, List<String> validationIssues) {

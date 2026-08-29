@@ -146,10 +146,34 @@ public class CampusProposalMarkdownRenderer {
                 .append("- 最低建议容量：").append(venue.path("minimum_capacity").asInt()).append("人\n")
                 .append("- 说明：").append(safeText(venue.path("notice").asText())).append("\n\n")
                 .append("候选场地：\n\n");
-        appendStringList(markdown, venue.path("candidate_types"));
+        if (venue.path("candidate_venues").isArray()
+                && !venue.path("candidate_venues").isEmpty()) {
+            markdown.append("| 地点 | 距学校定位点 | 地图地址 | 导航 |\n")
+                    .append("| --- | ---: | --- | --- |\n");
+            for (JsonNode candidate : venue.path("candidate_venues")) {
+                markdown.append("| ").append(tableText(candidate.path("name").asText()))
+                        .append(" | ").append(distanceText(candidate.path("distance_meters")))
+                        .append(" | ").append(tableText(candidate.path("address").asText("待核对")))
+                        .append(" | ");
+                String mapUrl = candidate.path("map_url").asText();
+                if (mapUrl.isBlank()) {
+                    markdown.append("—");
+                } else {
+                    markdown.append("[高德地图](").append(mapUrl).append(")");
+                }
+                markdown.append(" |\n");
+            }
+            markdown.append("\n> 地图只能证明 POI 和位置存在，不能证明容量、设备、开放时段或预约成功。\n");
+        } else {
+            appendStringList(markdown, venue.path("candidate_types"));
+        }
         markdown.append("\n场地要求：\n\n");
         appendStringList(markdown, venue.path("requirements"));
         markdown.append("\n");
+    }
+
+    private String distanceText(JsonNode distance) {
+        return distance.isNumber() ? distance.asInt() + "米" : "待核对";
     }
 
     private void appendWeather(StringBuilder markdown, JsonNode weather) {

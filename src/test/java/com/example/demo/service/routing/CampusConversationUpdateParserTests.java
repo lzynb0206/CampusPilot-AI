@@ -64,4 +64,12 @@ class CampusConversationUpdateParserTests {
 
         assertFalse(update.hasChanges());
     }
+
+    @Test
+    void treatsSchoolSelfIntroductionAsSchoolOnlyUpdate() {
+        CampusConversationUpdate update = parser.parse("我是南京信息工程大学的");
+
+        assertEquals("南京信息工程大学", update.school());
+        assertNull(update.venue());
+    }
 }
