@@ -152,15 +152,38 @@ public class AlibabaAiService {
     }
 
     public byte[] generateImage(String prompt) {
+        return generateImage(prompt, config.getImageSize(), true, null);
+    }
+
+    public byte[] generatePoster(String prompt) {
+        return generateImage(
+                prompt,
+                config.getPosterImageSize(),
+                false,
+                "文字模糊，错别字，乱码，重复文字，拥挤排版，低分辨率，低画质，"
+                        + "二维码，校徽，品牌Logo，水印，样机，手机边框，设计软件界面");
+    }
+
+    private byte[] generateImage(
+            String prompt,
+            String size,
+            boolean promptExtend,
+            String negativePrompt) {
         requireApiKey();
-        Map<String, Object> body = Map.of(
-                "model", config.getImageModel(),
-                "input", Map.of("messages", List.of(Map.of(
-                        "role", "user",
-                        "content", List.of(Map.of("text", prompt))
-                ))),
-                "parameters", Map.of("size", "1024*1024", "n", 1, "prompt_extend", true)
-        );
+        Map<String, Object> parameters = new LinkedHashMap<>();
+        parameters.put("size", size);
+        parameters.put("n", 1);
+        parameters.put("prompt_extend", promptExtend);
+        if (StringUtils.hasText(negativePrompt)) {
+            parameters.put("negative_prompt", negativePrompt);
+        }
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("model", config.getImageModel());
+        body.put("input", Map.of("messages", List.of(Map.of(
+                "role", "user",
+                "content", List.of(Map.of("text", prompt))
+        ))));
+        body.put("parameters", parameters);
         JsonNode root = postJson(
                 config.getApiUrl() + "/services/aigc/multimodal-generation/generation", body);
         String imageUrl = firstText(

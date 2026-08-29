@@ -1,7 +1,11 @@
 package com.example.demo.skill;
 
 import com.example.demo.agent.campus.CampusAgentOrchestrator;
+import com.example.demo.agent.campus.CampusAgentRun;
+import com.example.demo.agent.campus.CampusPosterPromptBuilder;
 import com.example.demo.agent.campus.CampusProposalMarkdownRenderer;
+import com.example.demo.config.CampusPosterConfig;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -27,12 +31,23 @@ public class CampusPlanningAgentSkill implements BotSkill {
 
     private final CampusAgentOrchestrator orchestrator;
     private final CampusProposalMarkdownRenderer renderer;
+    private final CampusPosterPromptBuilder posterPromptBuilder;
+
+    @Autowired
+    public CampusPlanningAgentSkill(
+            CampusAgentOrchestrator orchestrator,
+            CampusProposalMarkdownRenderer renderer,
+            CampusPosterPromptBuilder posterPromptBuilder) {
+        this.orchestrator = orchestrator;
+        this.renderer = renderer;
+        this.posterPromptBuilder = posterPromptBuilder;
+    }
 
     public CampusPlanningAgentSkill(
             CampusAgentOrchestrator orchestrator,
             CampusProposalMarkdownRenderer renderer) {
-        this.orchestrator = orchestrator;
-        this.renderer = renderer;
+        this(orchestrator, renderer,
+                new CampusPosterPromptBuilder(new CampusPosterConfig()));
     }
 
     @Override
@@ -68,11 +83,26 @@ public class CampusPlanningAgentSkill implements BotSkill {
 
     @Override
     public String execute(String userMessage) {
-        Matcher resume = RESUME_COMMAND.matcher(userMessage == null ? "" : userMessage);
-        if (resume.find()) {
-            return renderer.render(orchestrator.resume(resume.group(1).toLowerCase(Locale.ROOT)));
+        return executePlan(userMessage).reply();
+    }
+
+    @Override
+    public SkillOutput executeWithArtifacts(String userMessage) {
+        if (orchestrator == null || renderer == null) {
+            return SkillOutput.text(execute(userMessage));
         }
-        return renderer.render(orchestrator.run(userMessage));
+        return executePlan(userMessage);
+    }
+
+    private SkillOutput executePlan(String userMessage) {
+        Matcher resume = RESUME_COMMAND.matcher(userMessage == null ? "" : userMessage);
+        CampusAgentRun run;
+        if (resume.find()) {
+            run = orchestrator.resume(resume.group(1).toLowerCase(Locale.ROOT));
+        } else {
+            run = orchestrator.run(userMessage);
+        }
+        return new SkillOutput(renderer.render(run), posterPromptBuilder.build(run));
     }
 
     private boolean containsAny(String value, List<String> signals) {

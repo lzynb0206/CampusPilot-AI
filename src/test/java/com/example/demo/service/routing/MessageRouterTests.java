@@ -94,6 +94,21 @@ class MessageRouterTests {
     }
 
     @Test
+    void explicitCampusPosterRequestUsesPosterGenerationRoute() {
+        StubAiService aiService = new StubAiService();
+        aiService.nextIntent = new IntentResult(
+                ActionType.IMAGE_GENERATION, ReplyMode.TEXT, "校园技术活动海报", "");
+        MessageRouter router = router(new RagConfig(), List.of(), aiService);
+
+        MessageRouteResult result = router.route("生成一张校园活动海报", ReplyMode.TEXT);
+
+        assertEquals(ActionType.IMAGE_GENERATION, result.action());
+        assertEquals("campus_poster_generation", result.routeDetail());
+        assertEquals(0, aiService.intentCalls.get());
+        assertEquals(0, aiService.chatCalls.get());
+    }
+
+    @Test
     void rejectsWeatherClassificationWhenMessageOnlyContainsACity() {
         StubAiService aiService = new StubAiService();
         aiService.nextIntent = new IntentResult(
@@ -151,6 +166,34 @@ class MessageRouterTests {
         assertEquals("campus_conversation_update", result.routeDetail());
         assertTrue(result.content().contains("活动场地：西区食堂三楼"));
         assertTrue(result.content().contains("参与人数：80人"));
+        assertEquals(0, aiService.intentCalls.get());
+        assertEquals(0, aiService.chatCalls.get());
+    }
+
+    @Test
+    void posterRetryUsesTheSavedCampusPlanInsteadOfRag() {
+        StubAiService aiService = new StubAiService();
+        Clock clock = Clock.fixed(Instant.parse("2026-08-27T05:30:00Z"), ZoneId.of("UTC"));
+        CampusConversationService conversations = new CampusConversationService(
+                new EchoPlanningSkill(),
+                new CampusConversationUpdateParser(new CampusGoalParser(
+                        clock.withZone(ZoneId.of("Asia/Shanghai")))),
+                clock,
+                Duration.ofHours(2));
+        MessageRouter router = new MessageRouter(
+                new SkillRegistry(List.of()),
+                new KeywordRagService(new RagConfig()),
+                aiService,
+                conversations);
+
+        router.route("wechat-user-1", "帮我策划一次校园技术活动", ReplyMode.TEXT);
+        MessageRouteResult result = router.route(
+                "wechat-user-1", "根据方案生成活动海报", ReplyMode.TEXT);
+
+        assertEquals(ActionType.IMAGE_GENERATION, result.action());
+        assertEquals("campus_poster_generation", result.routeDetail());
+        assertTrue(result.content().contains("<campus_activity_context>"));
+        assertTrue(result.content().contains("活动名称：校园技术活动"));
         assertEquals(0, aiService.intentCalls.get());
         assertEquals(0, aiService.chatCalls.get());
     }

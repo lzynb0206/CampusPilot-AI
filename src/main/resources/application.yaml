@@ -24,6 +24,8 @@ dashscope:
   translation-model: ${DASHSCOPE_TRANSLATION_MODEL:qwen-mt-flash}
   vision-model: ${DASHSCOPE_VISION_MODEL:qwen3-vl-flash}
   image-model: ${DASHSCOPE_IMAGE_MODEL:qwen-image-2.0}
+  image-size: ${DASHSCOPE_IMAGE_SIZE:1024*1024}
+  poster-image-size: ${DASHSCOPE_POSTER_IMAGE_SIZE:1728*2368}
   asr-model: ${DASHSCOPE_ASR_MODEL:qwen3-asr-flash}
   tts-model: ${DASHSCOPE_TTS_MODEL:cosyvoice-v3-flash}
   tts-voice: ${DASHSCOPE_TTS_VOICE:longanyang}
@@ -62,3 +64,5 @@ agent:
   campus:
     checkpoint-dir: ${CAMPUS_AGENT_CHECKPOINT_DIR:data/campus-agent-checkpoints}
     conversation-ttl-minutes: ${CAMPUS_CONVERSATION_TTL_MINUTES:120}
+    poster:
+      enabled: ${CAMPUS_POSTER_ENABLED:true}

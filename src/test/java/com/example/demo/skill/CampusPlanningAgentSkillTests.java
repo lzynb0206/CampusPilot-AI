@@ -54,6 +54,8 @@ class CampusPlanningAgentSkillTests {
 
         assertEquals("campus_planning_agent", execution.skillName());
         assertEquals(1, weatherCalls.get());
+        assertTrue(execution.imagePrompt().contains("竖版中文活动海报"));
+        assertTrue(execution.imagePrompt().contains("校园AI技术分享会"));
         assertTrue(markdown.contains("# 校园AI技术分享会活动方案"));
         assertTrue(markdown.contains("## 二、通用校园规则"));
         assertTrue(markdown.contains("本校细则（有的话再补充）"));
@@ -143,6 +145,7 @@ class CampusPlanningAgentSkillTests {
         assertEquals(ActionType.CHAT, result.action());
         assertEquals("campus_planning_agent", result.routeDetail());
         assertTrue(result.content().contains("活动方案"));
+        assertTrue(result.imagePrompt().contains("校园AI技术分享会"));
         assertEquals(1, weatherCalls.get());
         assertEquals(0, aiService.calls.get());
     }

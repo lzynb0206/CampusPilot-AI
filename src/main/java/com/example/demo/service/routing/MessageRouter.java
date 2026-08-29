@@ -68,7 +68,8 @@ public class MessageRouter {
                         ActionType.CHAT,
                         directReplyMode,
                         reply.content(),
-                        reply.detail());
+                        reply.detail(),
+                        reply.imagePrompt());
             }
             activeCampusContext = campusConversationService.contextFor(conversationId).orElse(null);
         }
@@ -81,7 +82,18 @@ public class MessageRouter {
                     ActionType.CHAT,
                     directReplyMode,
                     execution.reply(),
-                    execution.skillName());
+                    execution.skillName(),
+                    execution.imagePrompt());
+        }
+
+        if (isCampusPosterRequest(userMessage) && hasExplicitImageGenerationSignal(userMessage)) {
+            log.info("消息路由命中校园活动海报生成指令");
+            return new MessageRouteResult(
+                    MessageRouteType.LLM,
+                    ActionType.IMAGE_GENERATION,
+                    ReplyMode.TEXT,
+                    withCampusContext(activeCampusContext, userMessage),
+                    "campus_poster_generation");
         }
 
         Optional<RagContext> ragContext = ragService.retrieve(userMessage);
@@ -118,7 +130,8 @@ public class MessageRouter {
                     ActionType.IMAGE_GENERATION,
                     ReplyMode.TEXT,
                     imagePrompt,
-                    "image_generation");
+                    isCampusPosterRequest(userMessage)
+                            ? "campus_poster_generation" : "image_generation");
         }
 
         String weatherLocation = intent.location();
@@ -180,5 +193,21 @@ public class MessageRouter {
         return normalized.contains("这个活动") || normalized.contains("本次活动")
                 || normalized.contains("活动海报") || normalized.contains("按这个")
                 || normalized.contains("根据方案") || normalized.contains("原方案");
+    }
+
+    private boolean isCampusPosterRequest(String message) {
+        String normalized = message.toLowerCase(Locale.ROOT).replaceAll("\\s+", "");
+        return normalized.contains("海报")
+                && (normalized.contains("活动") || normalized.contains("校园")
+                || normalized.contains("方案"));
+    }
+
+    private boolean hasExplicitImageGenerationSignal(String message) {
+        String normalized = message.toLowerCase(Locale.ROOT).replaceAll("\\s+", "");
+        boolean requestsCreation = normalized.contains("生成") || normalized.contains("制作")
+                || normalized.contains("设计") || normalized.contains("画一张")
+                || normalized.contains("帮我画");
+        return requestsCreation && (normalized.contains("海报") || normalized.contains("图片")
+                || normalized.contains("插画"));
     }
 }

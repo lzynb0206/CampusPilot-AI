@@ -11,6 +11,10 @@ public interface BotSkill {
 
     String execute(String userMessage);
 
+    default SkillOutput executeWithArtifacts(String userMessage) {
+        return SkillOutput.text(execute(userMessage));
+    }
+
     default boolean matches(String userMessage) {
         return true;
     }

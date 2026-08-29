@@ -58,14 +58,13 @@ public class SkillRegistry {
             return Optional.empty();
         }
 
-        String reply = bestMatch.skill().execute(userMessage);
-        if (!StringUtils.hasText(reply)) {
-            throw new IllegalStateException("Skill未返回内容：" + bestMatch.skill().name());
-        }
+        SkillOutput output = bestMatch.skill().executeWithArtifacts(userMessage);
+        String reply = output.reply();
         log.info("Skill执行完成 skill={} keyword={}",
                 bestMatch.skill().name(), bestMatch.originalKeyword());
         return Optional.of(new SkillExecution(
-                bestMatch.skill().name(), bestMatch.originalKeyword(), reply.trim()));
+                bestMatch.skill().name(), bestMatch.originalKeyword(), reply.trim(),
+                output.imagePrompt()));
     }
 
     private void validate(BotSkill skill) {

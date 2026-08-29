@@ -5,5 +5,15 @@ public record MessageRouteResult(
         ActionType action,
         ReplyMode replyMode,
         String content,
-        String routeDetail) {
+        String routeDetail,
+        String imagePrompt) {
+
+    public MessageRouteResult(
+            MessageRouteType routeType,
+            ActionType action,
+            ReplyMode replyMode,
+            String content,
+            String routeDetail) {
+        this(routeType, action, replyMode, content, routeDetail, null);
+    }
 }

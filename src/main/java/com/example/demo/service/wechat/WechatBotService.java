@@ -22,6 +22,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -179,11 +180,43 @@ public class WechatBotService implements DisposableBean {
 
     private void executeRoute(String fromUserId, MessageRouteResult route) throws Exception {
         if (route.action() == ActionType.IMAGE_GENERATION) {
-            byte[] image = aiService.generateImage(route.content());
-            client.sendImage(fromUserId, image, "qwen-image.png", route.content());
+            boolean campusPoster = "campus_poster_generation".equals(route.routeDetail());
+            byte[] image = campusPoster
+                    ? aiService.generatePoster(route.content())
+                    : aiService.generateImage(route.content());
+            client.sendImage(
+                    fromUserId,
+                    image,
+                    campusPoster ? "campus-event-poster.png" : "qwen-image.png",
+                    campusPoster
+                            ? "AI生成的活动海报，请在发布前核对全部文字。"
+                            : route.content());
             return;
         }
         sendReply(fromUserId, route.content(), route.replyMode());
+        sendCampusPosterIfPresent(fromUserId, route.imagePrompt());
+    }
+
+    private void sendCampusPosterIfPresent(String fromUserId, String imagePrompt) {
+        if (!StringUtils.hasText(imagePrompt)) {
+            return;
+        }
+        try {
+            byte[] image = aiService.generatePoster(imagePrompt);
+            client.sendImage(
+                    fromUserId,
+                    image,
+                    "campus-event-poster.png",
+                    "AI生成的活动海报，请在发布前核对标题、日期、时间、地点和文字。");
+        } catch (Exception exception) {
+            log.warn("校园活动方案已发送，但海报生成失败 userId={}", fromUserId, exception);
+            try {
+                client.sendText(fromUserId,
+                        "活动方案已经生成，但海报暂时生成失败。你可以稍后发送“根据方案生成活动海报”重试。");
+            } catch (Exception sendException) {
+                log.debug("发送海报失败提示时发生异常 userId={}", fromUserId, sendException);
+            }
+        }
     }
 
     private void sendReply(String fromUserId, String text, ReplyMode replyMode) throws Exception {

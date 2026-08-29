@@ -20,6 +20,7 @@ Many chatbot demos stop at a single LLM request. CampusPilot AI implements the s
 - **Dependency-aware agent orchestration** — decomposes a planning goal into a 12-task DAG covering rules, weather, venue, agenda, staffing, supplies, budget, publicity, and risk.
 - **Evaluator-driven output** — validates dates, capacity, weather alignment, budget arithmetic, task completeness, and source boundaries before rendering a proposal.
 - **Live campus venue discovery** — locates a named school with AMap and turns nearby building, hall, and sports-field POIs into concrete candidates with map links.
+- **Automatic event posters** — turns each completed campus plan into a vertical AI-generated poster while preserving the text plan if image generation fails.
 - **Safe generic defaults** — produces a useful plan even when details are missing, while clearly marking assumptions instead of blocking the user.
 - **RAG with trust labels** — separates `VERIFIED` project knowledge from `TEMPLATE` campus guidance so demo material is not presented as a real university policy.
 - **Parallel tool execution** — uses Java 21 virtual threads for independent tool calls and same-layer agent tasks.
@@ -35,7 +36,8 @@ User: 帮我策划一次校园技术分享会
 
 CampusPilot AI:
 Returns a complete, editable plan using clearly marked defaults
-for missing date, venue, attendance, and budget details.
+for missing date, venue, attendance, and budget details, followed by
+a vertical draft poster with pending fields visibly marked as pending.
 
 User: 我是在南京信息工程大学明德楼举行
 
@@ -80,6 +82,8 @@ flowchart TB
     E --> T["RAG, weather, venue, agenda, supplies, budget, risk"]
     T --> V["Evaluator + selective retry"]
     V --> M["10-section Markdown proposal"]
+    M --> POSTER["3:4 campus poster prompt"]
+    POSTER --> IMG["Qwen-Image poster"]
 
     L --> W["Weather / news / translation / calculator tools"]
     L --> MM["Vision / image / ASR / TTS models"]
@@ -89,9 +93,10 @@ flowchart TB
 
 1. Apply an active campus conversation update or reset command.
 2. Match a deterministic `Skill` such as campus planning or a daily brief.
-3. Retrieve local RAG knowledge when relevant.
-4. Classify chat, weather, image generation, and reply-mode intent.
-5. Run the Qwen tool-calling loop when an open-ended model response is needed.
+3. Match an explicit campus-poster generation or retry command.
+4. Retrieve local RAG knowledge when relevant.
+5. Classify chat, weather, image generation, and reply-mode intent.
+6. Run the Qwen tool-calling loop when an open-ended model response is needed.
 
 Weather routing requires an explicit weather signal such as `天气`, `气温`, `温度`, or `下雨`. A city, university, or building name alone cannot trigger a weather response.
 
@@ -125,6 +130,8 @@ The final proposal contains:
 - publicity and registration drafts;
 - risk controls and an implementation checklist.
 
+After a completed plan is rendered, a deterministic poster template extracts only the confirmed event name, date, start time, school, and venue. Technology, sports, performance, and general campus activities receive different visual styles. Missing facts remain visibly marked as `待定`; the poster prompt is not allowed to invent a room, time, organizer, QR code, logo, or sponsor. The WeChat bot sends the text plan first and then the poster, so an image-generation failure never discards the usable plan.
+
 ## Technology Stack
 
 | Area | Technology |
@@ -140,6 +147,7 @@ The final proposal contains:
 | WeChat integration | `wechat-ilink-sdk` 2.3.3 |
 | Weather | Seniverse current weather and daily forecast APIs |
 | Campus maps | AMap Web Service geocoding, Places 2.0 nearby search, and marker URI links |
+| Event posters | Qwen-Image 2.0 with deterministic campus templates and 3:4 output |
 | HTTP | Spring `RestTemplate`, Apache HttpClient 5 connection pool |
 | Serialization | Jackson |
 | Voice pipeline | Node.js 18+, `silk-wasm` 3.7.1, Qwen ASR, CosyVoice TTS |
@@ -262,6 +270,8 @@ Scan it with WeChat and keep the application running. With the default configura
 | `DASHSCOPE_TRANSLATION_MODEL` | `qwen-mt-flash` | Translation model |
 | `DASHSCOPE_VISION_MODEL` | `qwen3-vl-flash` | Image-understanding model |
 | `DASHSCOPE_IMAGE_MODEL` | `qwen-image-2.0` | Image-generation model |
+| `DASHSCOPE_IMAGE_SIZE` | `1024*1024` | Output size for ordinary image-generation requests |
+| `DASHSCOPE_POSTER_IMAGE_SIZE` | `1728*2368` | Vertical 3:4 output size used for campus posters |
 | `DASHSCOPE_ASR_MODEL` | `qwen3-asr-flash` | Speech-recognition model |
 | `DASHSCOPE_TTS_MODEL` | `cosyvoice-v3-flash` | Text-to-speech model |
 | `REMOTE_INTENT_CLASSIFICATION_ENABLED` | `false` | Enables model-based intent classification after local rules |
@@ -274,6 +284,7 @@ Scan it with WeChat and keep the application running. With the default configura
 | `RAG_MAX_RESULTS` | `3` | Maximum retrieved documents, capped at 10 |
 | `CAMPUS_CONVERSATION_TTL_MINUTES` | `120` | Per-contact campus context lifetime |
 | `CAMPUS_AGENT_CHECKPOINT_DIR` | `data/campus-agent-checkpoints` | Agent checkpoint directory |
+| `CAMPUS_POSTER_ENABLED` | `true` | Automatically generates a poster after each completed campus plan |
 | `SILK_SAMPLE_RATE` | `24000` | WAV sample rate used by the SILK decoder |
 | `SILK_DECODE_TIMEOUT_SECONDS` | `30` | Voice decode timeout |
 
@@ -350,6 +361,7 @@ scripts
 - The bot drafts publicity and registration content but does not publish it automatically.
 - The agent does not reserve venues, make purchases, process payments, or claim that an external action has completed.
 - Map results are treated as unverified candidates; a POI result never implies that the room is available or large enough.
+- The text plan is sent before poster generation; poster errors are isolated and can be retried with `根据方案生成活动海报`.
 
 ## Known Limitations
 
@@ -358,6 +370,7 @@ scripts
 - The included RAG implementation uses keyword matching rather than embeddings or a vector database.
 - School-specific rules must be supplied by the deployer; bundled campus documents are demonstration templates.
 - AMap may not expose every internal classroom or room-level detail, and a school name without a campus can resolve to the wrong campus.
+- AI-generated posters can still contain typographic mistakes; title, date, time, venue, and all visible text must be reviewed before publication.
 - Voice replies are sent as WAV files rather than native WeChat voice bubbles.
 - The WeChat integration uses a third-party iLink SDK and is not an official WeChat product. Review the SDK and platform terms before deployment.
 

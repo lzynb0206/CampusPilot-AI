@@ -17,6 +17,8 @@ public class AiConfig {
     private String translationModel = "qwen-mt-flash";
     private String visionModel = "qwen3-vl-flash";
     private String imageModel = "qwen-image-2.0";
+    private String imageSize = "1024*1024";
+    private String posterImageSize = "1728*2368";
     private String asrModel = "qwen3-asr-flash";
     private String ttsModel = "cosyvoice-v3-flash";
     private String ttsVoice = "longanyang";

@@ -1,6 +1,7 @@
 package com.example.demo.service.routing;
 
 import com.example.demo.skill.CampusPlanningAgentSkill;
+import com.example.demo.skill.SkillOutput;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -114,7 +115,9 @@ public class CampusConversationService {
     }
 
     private CampusConversationReply render(CampusConversationState state, String detail) {
-        return new CampusConversationReply(planningSkill.execute(state.canonicalGoal()), detail);
+        SkillOutput output = planningSkill.executeWithArtifacts(state.canonicalGoal());
+        return new CampusConversationReply(
+                output.reply(), detail, output.imagePrompt());
     }
 
     private void removeExpired(Instant now) {
