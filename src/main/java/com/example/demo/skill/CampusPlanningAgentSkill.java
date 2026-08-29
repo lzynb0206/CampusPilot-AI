@@ -102,7 +102,7 @@ public class CampusPlanningAgentSkill implements BotSkill {
         } else {
             run = orchestrator.run(userMessage);
         }
-        return new SkillOutput(renderer.render(run), posterPromptBuilder.build(run));
+        return SkillOutput.poster(renderer.render(run), posterPromptBuilder.build(run));
     }
 
     private boolean containsAny(String value, List<String> signals) {

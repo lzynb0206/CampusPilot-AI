@@ -10,6 +10,7 @@ import java.time.Instant;
 import java.time.ZoneId;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class CampusConversationServiceTests {
@@ -51,6 +52,23 @@ class CampusConversationServiceTests {
         clock.advance(Duration.ofMinutes(31));
         assertTrue(service.handle("user-a", "人数改80").isEmpty());
         assertFalse(service.hasActiveSession("user-a"));
+    }
+
+    @Test
+    void answersARecallQuestionWithoutRenamingOrRegeneratingThePlan() {
+        MutableClock clock = new MutableClock(Instant.parse("2026-08-29T15:00:00Z"));
+        CampusConversationService service = service(clock, Duration.ofHours(2));
+
+        service.handle("user-a", "帮我策划一次校园技术活动").orElseThrow();
+        service.handle("user-a", "我是南京信息工程大学的").orElseThrow();
+        CampusConversationReply reply = service.handle(
+                "user-a", "我刚刚要策划在哪里举行的技术分享会 你还记得吗").orElseThrow();
+
+        assertEquals("campus_conversation_recall", reply.detail());
+        assertTrue(reply.content().contains("你刚才策划的是「校园技术活动」"));
+        assertTrue(reply.content().contains("南京信息工程大学（具体楼宇或教室尚未确定）"));
+        assertFalse(reply.content().contains("你刚才策划的是「在哪里举行的技术分享会」"));
+        assertTrue(reply.imagePrompt() == null);
     }
 
     private CampusConversationService service(Clock clock, Duration ttl) {

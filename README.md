@@ -20,7 +20,7 @@ Many chatbot demos stop at a single LLM request. CampusPilot AI implements the s
 - **Dependency-aware agent orchestration** — decomposes a planning goal into a 12-task DAG covering rules, weather, venue, agenda, staffing, supplies, budget, publicity, and risk.
 - **Evaluator-driven output** — validates dates, capacity, weather alignment, budget arithmetic, task completeness, and source boundaries before rendering a proposal.
 - **Live campus venue discovery** — locates a named school with AMap and turns nearby building, hall, and sports-field POIs into concrete candidates with map links.
-- **Automatic event posters** — turns each completed campus plan into a vertical AI-generated poster while preserving the text plan if image generation fails.
+- **Production-style event posters** — generates a different text-free AI background for each event, then renders exact titles, school names, dates, times, venues, and optional school logos with deterministic Java layouts.
 - **Safe generic defaults** — produces a useful plan even when details are missing, while clearly marking assumptions instead of blocking the user.
 - **RAG with trust labels** — separates `VERIFIED` project knowledge from `TEMPLATE` campus guidance so demo material is not presented as a real university policy.
 - **Parallel tool execution** — uses Java 21 virtual threads for independent tool calls and same-layer agent tasks.
@@ -58,6 +58,7 @@ Uses the saved event summary to answer the follow-up question.
 ```
 
 Conversation state is isolated by WeChat contact, expires after 120 minutes by default, and can be cleared with `重新策划`, `清除方案`, or `结束策划`.
+Recall and fact questions such as `你还记得刚才的活动吗` or `这个活动在哪举行` read the saved plan without being treated as field updates or new event names.
 
 ## Architecture
 
@@ -82,8 +83,11 @@ flowchart TB
     E --> T["RAG, weather, venue, agenda, supplies, budget, risk"]
     T --> V["Evaluator + selective retry"]
     V --> M["10-section Markdown proposal"]
-    M --> POSTER["3:4 campus poster prompt"]
-    POSTER --> IMG["Qwen-Image poster"]
+    M --> POSTER["Structured poster specification"]
+    POSTER --> BG["Qwen-Image text-free background"]
+    POSTER --> LAYOUT["Java layout + exact text + optional logo"]
+    BG --> LAYOUT
+    LAYOUT --> IMG["Final 3:4 PNG poster"]
 
     L --> W["Weather / news / translation / calculator tools"]
     L --> MM["Vision / image / ASR / TTS models"]
@@ -130,7 +134,9 @@ The final proposal contains:
 - publicity and registration drafts;
 - risk controls and an implementation checklist.
 
-After a completed plan is rendered, a deterministic poster template extracts only the confirmed event name, date, start time, school, and venue. Technology, sports, performance, and general campus activities receive different visual styles. Missing facts remain visibly marked as `待定`; the poster prompt is not allowed to invent a room, time, organizer, QR code, logo, or sponsor. The WeChat bot sends the text plan first and then the poster, so an image-generation failure never discards the usable plan.
+After a completed plan is rendered, the poster pipeline extracts only the confirmed event name, date, start time, school, and venue. Qwen-Image generates a fresh text-free background for each request; it never receives the real title or venue and is explicitly prohibited from drawing text, logos, QR codes, or contact details. Java then applies one of two stable layout systems inspired by the supplied references: a cinematic centered-title layout and an editorial left-title layout. It draws the real Chinese text into protected safe areas, automatically wraps long titles and venues, and loads an optional official school logo from the classpath. Missing facts remain visibly marked as `待定` instead of being invented.
+
+Curated poster layout references can be placed in `src/main/resources/poster-templates/references/`; they guide layout design but are never reused as runtime backgrounds. Official school logos can be placed in `src/main/resources/poster-templates/logos/` using the exact school name as the filename, for example `南京信息工程大学.png`.
 
 ## Technology Stack
 
@@ -147,7 +153,7 @@ After a completed plan is rendered, a deterministic poster template extracts onl
 | WeChat integration | `wechat-ilink-sdk` 2.3.3 |
 | Weather | Seniverse current weather and daily forecast APIs |
 | Campus maps | AMap Web Service geocoding, Places 2.0 nearby search, and marker URI links |
-| Event posters | Qwen-Image 2.0 with deterministic campus templates and 3:4 output |
+| Event posters | Qwen-Image 2.0 backgrounds plus Java2D deterministic text, layout, and optional-logo composition |
 | HTTP | Spring `RestTemplate`, Apache HttpClient 5 connection pool |
 | Serialization | Jackson |
 | Voice pipeline | Node.js 18+, `silk-wasm` 3.7.1, Qwen ASR, CosyVoice TTS |
@@ -271,7 +277,7 @@ Scan it with WeChat and keep the application running. With the default configura
 | `DASHSCOPE_VISION_MODEL` | `qwen3-vl-flash` | Image-understanding model |
 | `DASHSCOPE_IMAGE_MODEL` | `qwen-image-2.0` | Image-generation model |
 | `DASHSCOPE_IMAGE_SIZE` | `1024*1024` | Output size for ordinary image-generation requests |
-| `DASHSCOPE_POSTER_IMAGE_SIZE` | `1728*2368` | Vertical 3:4 output size used for campus posters |
+| `DASHSCOPE_POSTER_IMAGE_SIZE` | `1728*2368` | AI source-background size used before final composition |
 | `DASHSCOPE_ASR_MODEL` | `qwen3-asr-flash` | Speech-recognition model |
 | `DASHSCOPE_TTS_MODEL` | `cosyvoice-v3-flash` | Text-to-speech model |
 | `REMOTE_INTENT_CLASSIFICATION_ENABLED` | `false` | Enables model-based intent classification after local rules |
@@ -285,6 +291,9 @@ Scan it with WeChat and keep the application running. With the default configura
 | `CAMPUS_CONVERSATION_TTL_MINUTES` | `120` | Per-contact campus context lifetime |
 | `CAMPUS_AGENT_CHECKPOINT_DIR` | `data/campus-agent-checkpoints` | Agent checkpoint directory |
 | `CAMPUS_POSTER_ENABLED` | `true` | Automatically generates a poster after each completed campus plan |
+| `CAMPUS_POSTER_CANVAS_WIDTH` | `1080` | Final composed poster width |
+| `CAMPUS_POSTER_CANVAS_HEIGHT` | `1440` | Final composed poster height |
+| `CAMPUS_POSTER_LOGO_RESOURCE_DIRECTORY` | `poster-templates/logos` | Classpath directory containing optional official school logos |
 | `SILK_SAMPLE_RATE` | `24000` | WAV sample rate used by the SILK decoder |
 | `SILK_DECODE_TIMEOUT_SECONDS` | `30` | Voice decode timeout |
 
@@ -370,7 +379,7 @@ scripts
 - The included RAG implementation uses keyword matching rather than embeddings or a vector database.
 - School-specific rules must be supplied by the deployer; bundled campus documents are demonstration templates.
 - AMap may not expose every internal classroom or room-level detail, and a school name without a campus can resolve to the wrong campus.
-- AI-generated posters can still contain typographic mistakes; title, date, time, venue, and all visible text must be reviewed before publication.
+- Event facts are rendered by Java rather than the image model, but they must still be reviewed before publication; an official logo appears only when a matching authorized image exists in `poster-templates/logos/`.
 - Voice replies are sent as WAV files rather than native WeChat voice bubbles.
 - The WeChat integration uses a third-party iLink SDK and is not an official WeChat product. Review the SDK and platform terms before deployment.
 

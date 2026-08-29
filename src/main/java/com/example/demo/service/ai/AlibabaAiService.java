@@ -155,13 +155,17 @@ public class AlibabaAiService {
         return generateImage(prompt, config.getImageSize(), true, null);
     }
 
-    public byte[] generatePoster(String prompt) {
+    public byte[] generatePosterBackground(String prompt) {
         return generateImage(
                 prompt,
                 config.getPosterImageSize(),
                 false,
-                "文字模糊，错别字，乱码，重复文字，拥挤排版，低分辨率，低画质，"
-                        + "二维码，校徽，品牌Logo，水印，样机，手机边框，设计软件界面");
+                "中文，英文，字母，数字，文字，伪文字，乱码，标题，占位文字，信息图标，"
+                        + "二维码，校徽，品牌Logo，水印，低分辨率，低画质，样机，手机边框，设计软件界面");
+    }
+
+    public byte[] generatePoster(String prompt) {
+        return generatePosterBackground(prompt);
     }
 
     private byte[] generateImage(

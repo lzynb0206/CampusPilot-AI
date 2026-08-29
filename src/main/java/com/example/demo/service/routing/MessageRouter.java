@@ -69,7 +69,8 @@ public class MessageRouter {
                         directReplyMode,
                         reply.content(),
                         reply.detail(),
-                        reply.imagePrompt());
+                        reply.imagePrompt(),
+                        reply.posterSpec());
             }
             activeCampusContext = campusConversationService.contextFor(conversationId).orElse(null);
         }
@@ -83,7 +84,8 @@ public class MessageRouter {
                     directReplyMode,
                     execution.reply(),
                     execution.skillName(),
-                    execution.imagePrompt());
+                    execution.imagePrompt(),
+                    execution.posterSpec());
         }
 
         if (isCampusPosterRequest(userMessage) && hasExplicitImageGenerationSignal(userMessage)) {

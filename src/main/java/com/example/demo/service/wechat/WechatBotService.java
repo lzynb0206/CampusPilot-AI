@@ -1,10 +1,12 @@
 package com.example.demo.service.wechat;
 
+import com.example.demo.agent.campus.CampusPosterSpec;
 import com.example.demo.model.ActionType;
 import com.example.demo.model.MessageRouteResult;
 import com.example.demo.model.ReplyMode;
 import com.example.demo.service.ai.AlibabaAiService;
 import com.example.demo.service.audio.AudioTranscoder;
+import com.example.demo.service.poster.CampusPosterService;
 import com.example.demo.service.routing.MessageRouter;
 import com.github.wechat.ilink.sdk.ILinkClient;
 import com.github.wechat.ilink.sdk.core.listener.OnLoginListener;
@@ -22,7 +24,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
-import org.springframework.util.StringUtils;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -35,6 +36,7 @@ import java.util.concurrent.Executors;
 public class WechatBotService implements DisposableBean {
     private final AlibabaAiService aiService;
     private final AudioTranscoder audioTranscoder;
+    private final CampusPosterService campusPosterService;
     private final MessageRouter messageRouter;
     private final PerUserTaskQueue userTaskQueue;
     private ILinkClient client;
@@ -52,10 +54,12 @@ public class WechatBotService implements DisposableBean {
     public WechatBotService(
             AlibabaAiService aiService,
             AudioTranscoder audioTranscoder,
+            CampusPosterService campusPosterService,
             MessageRouter messageRouter,
             PerUserTaskQueue userTaskQueue) {
         this.aiService = aiService;
         this.audioTranscoder = audioTranscoder;
+        this.campusPosterService = campusPosterService;
         this.messageRouter = messageRouter;
         this.userTaskQueue = userTaskQueue;
     }
@@ -182,7 +186,7 @@ public class WechatBotService implements DisposableBean {
         if (route.action() == ActionType.IMAGE_GENERATION) {
             boolean campusPoster = "campus_poster_generation".equals(route.routeDetail());
             byte[] image = campusPoster
-                    ? aiService.generatePoster(route.content())
+                    ? campusPosterService.generateFromGoal(route.content())
                     : aiService.generateImage(route.content());
             client.sendImage(
                     fromUserId,
@@ -194,20 +198,23 @@ public class WechatBotService implements DisposableBean {
             return;
         }
         sendReply(fromUserId, route.content(), route.replyMode());
-        sendCampusPosterIfPresent(fromUserId, route.imagePrompt());
+        sendCampusPosterIfPresent(fromUserId, route.posterSpec());
     }
 
-    private void sendCampusPosterIfPresent(String fromUserId, String imagePrompt) {
-        if (!StringUtils.hasText(imagePrompt)) {
+    private void sendCampusPosterIfPresent(
+            String fromUserId,
+            CampusPosterSpec posterSpec) {
+        if (posterSpec == null) {
             return;
         }
         try {
-            byte[] image = aiService.generatePoster(imagePrompt);
+            byte[] image = campusPosterService.generate(posterSpec);
             client.sendImage(
                     fromUserId,
                     image,
                     "campus-event-poster.png",
-                    "AI生成的活动海报，请在发布前核对标题、日期、时间、地点和文字。");
+                    "活动海报已生成：背景由AI创作，标题、日期、时间和地点由程序精确排版。"
+                            + "发布前请再核对活动信息。");
         } catch (Exception exception) {
             log.warn("校园活动方案已发送，但海报生成失败 userId={}", fromUserId, exception);
             try {

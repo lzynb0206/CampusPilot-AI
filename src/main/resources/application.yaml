@@ -66,3 +66,6 @@ agent:
     conversation-ttl-minutes: ${CAMPUS_CONVERSATION_TTL_MINUTES:120}
     poster:
       enabled: ${CAMPUS_POSTER_ENABLED:true}
+      canvas-width: ${CAMPUS_POSTER_CANVAS_WIDTH:1080}
+      canvas-height: ${CAMPUS_POSTER_CANVAS_HEIGHT:1440}
+      logo-resource-directory: ${CAMPUS_POSTER_LOGO_RESOURCE_DIRECTORY:poster-templates/logos}

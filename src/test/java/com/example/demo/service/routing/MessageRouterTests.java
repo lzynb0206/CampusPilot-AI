@@ -199,6 +199,36 @@ class MessageRouterTests {
     }
 
     @Test
+    void recallQuestionReturnsSavedPlanInsteadOfTreatingTheQuestionAsANewEventName() {
+        StubAiService aiService = new StubAiService();
+        Clock clock = Clock.fixed(Instant.parse("2026-08-29T15:00:00Z"), ZoneId.of("UTC"));
+        CampusConversationService conversations = new CampusConversationService(
+                new EchoPlanningSkill(),
+                new CampusConversationUpdateParser(new CampusGoalParser(
+                        clock.withZone(ZoneId.of("Asia/Shanghai")))),
+                clock,
+                Duration.ofHours(2));
+        MessageRouter router = new MessageRouter(
+                new SkillRegistry(List.of()),
+                new KeywordRagService(new RagConfig()),
+                aiService,
+                conversations);
+
+        router.route("wechat-user-1", "帮我策划一次校园技术活动", ReplyMode.TEXT);
+        router.route("wechat-user-1", "我是南京信息工程大学的", ReplyMode.TEXT);
+        MessageRouteResult result = router.route(
+                "wechat-user-1", "我刚刚要策划在哪里举行的技术分享会 你还记得吗", ReplyMode.TEXT);
+
+        assertEquals(MessageRouteType.SKILL, result.routeType());
+        assertEquals("campus_conversation_recall", result.routeDetail());
+        assertTrue(result.content().contains("你刚才策划的是「校园技术活动」"));
+        assertTrue(result.content().contains("南京信息工程大学"));
+        assertFalse(result.content().contains("你刚才策划的是「在哪里举行的技术分享会」"));
+        assertEquals(0, aiService.intentCalls.get());
+        assertEquals(0, aiService.chatCalls.get());
+    }
+
+    @Test
     void ordinaryFollowUpReceivesTheSavedCampusContext() {
         StubAiService aiService = new StubAiService();
         Clock clock = Clock.fixed(Instant.parse("2026-08-27T05:30:00Z"), ZoneId.of("UTC"));

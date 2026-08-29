@@ -9,4 +9,7 @@ import org.springframework.stereotype.Component;
 @ConfigurationProperties(prefix = "agent.campus.poster")
 public class CampusPosterConfig {
     private boolean enabled = true;
+    private int canvasWidth = 1080;
+    private int canvasHeight = 1440;
+    private String logoResourceDirectory = "poster-templates/logos";
 }

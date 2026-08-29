@@ -64,7 +64,7 @@ public class SkillRegistry {
                 bestMatch.skill().name(), bestMatch.originalKeyword());
         return Optional.of(new SkillExecution(
                 bestMatch.skill().name(), bestMatch.originalKeyword(), reply.trim(),
-                output.imagePrompt()));
+                output.imagePrompt(), output.posterSpec()));
     }
 
     private void validate(BotSkill skill) {

@@ -40,7 +40,7 @@ class AlibabaAiServicePosterTests {
         server.expect(request -> {
         }).andRespond(withSuccess(expected, MediaType.IMAGE_PNG));
 
-        byte[] actual = service.generatePoster("测试校园海报提示词");
+        byte[] actual = service.generatePosterBackground("测试校园海报背景提示词");
 
         assertArrayEquals(expected, actual);
         server.verify();
