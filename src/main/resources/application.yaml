@@ -25,6 +25,7 @@ dashscope:
   vision-model: ${DASHSCOPE_VISION_MODEL:qwen3-vl-flash}
   image-model: ${DASHSCOPE_IMAGE_MODEL:qwen-image-2.0}
   image-size: ${DASHSCOPE_IMAGE_SIZE:1024*1024}
+  poster-image-model: ${DASHSCOPE_POSTER_IMAGE_MODEL:wan2.7-image-pro}
   poster-image-size: ${DASHSCOPE_POSTER_IMAGE_SIZE:1728*2368}
   asr-model: ${DASHSCOPE_ASR_MODEL:qwen3-asr-flash}
   tts-model: ${DASHSCOPE_TTS_MODEL:cosyvoice-v3-flash}
@@ -69,3 +70,6 @@ agent:
       canvas-width: ${CAMPUS_POSTER_CANVAS_WIDTH:1080}
       canvas-height: ${CAMPUS_POSTER_CANVAS_HEIGHT:1440}
       logo-resource-directory: ${CAMPUS_POSTER_LOGO_RESOURCE_DIRECTORY:poster-templates/logos}
+      background-quality-review-enabled: ${CAMPUS_POSTER_BACKGROUND_QUALITY_REVIEW_ENABLED:true}
+      max-background-attempts: ${CAMPUS_POSTER_MAX_BACKGROUND_ATTEMPTS:3}
+      minimum-background-score: ${CAMPUS_POSTER_MINIMUM_BACKGROUND_SCORE:72}

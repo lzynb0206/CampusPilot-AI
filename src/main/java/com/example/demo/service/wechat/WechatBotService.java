@@ -219,7 +219,8 @@ public class WechatBotService implements DisposableBean {
             log.warn("校园活动方案已发送，但海报生成失败 userId={}", fromUserId, exception);
             try {
                 client.sendText(fromUserId,
-                        "活动方案已经生成，但海报暂时生成失败。你可以稍后发送“根据方案生成活动海报”重试。");
+                        "活动方案已经生成，但这次背景没有通过文字与画面质量检查，因此没有发送低质海报。"
+                                + "你可以稍后发送“根据方案生成活动海报”重试。");
             } catch (Exception sendException) {
                 log.debug("发送海报失败提示时发生异常 userId={}", fromUserId, sendException);
             }

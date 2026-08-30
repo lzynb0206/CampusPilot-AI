@@ -54,7 +54,7 @@ class CampusPlanningAgentSkillTests {
 
         assertEquals("campus_planning_agent", execution.skillName());
         assertEquals(1, weatherCalls.get());
-        assertTrue(execution.imagePrompt().contains("只生成背景"));
+        assertTrue(execution.imagePrompt().contains("供设计师后续排版的背景板"));
         assertEquals("校园AI技术分享会", execution.posterSpec().eventName());
         assertEquals("2026年9月20日", execution.posterSpec().date());
         assertTrue(markdown.contains("# 校园AI技术分享会活动方案"));
@@ -147,7 +147,7 @@ class CampusPlanningAgentSkillTests {
         assertEquals("campus_planning_agent", result.routeDetail());
         assertTrue(result.content().contains("活动方案"));
         assertEquals("校园AI技术分享会", result.posterSpec().eventName());
-        assertTrue(result.imagePrompt().contains("只生成背景"));
+        assertTrue(result.imagePrompt().contains("供设计师后续排版的背景板"));
         assertEquals(1, weatherCalls.get());
         assertEquals(0, aiService.calls.get());
     }

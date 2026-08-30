@@ -43,15 +43,17 @@ public class CampusPosterPromptBuilder {
         String location = posterLocation(goal);
         PosterTheme theme = posterTheme(goal.rawGoal());
         String composition = theme.layout() == CampusPosterLayout.CINEMATIC
-                ? "画面上方和中央保留低细节的标题安全区，下方保留较暗、平整的信息安全区"
-                : "画面上方保留简洁品牌安全区，中上部保留大面积低细节标题区，下方保留平整信息区";
+                ? "上方10%保持安静，中央20%到58%为低细节主标题留白区，下方68%到96%为平整深色信息区"
+                : "上方10%保持安静，中上部20%到58%为大面积低细节主标题留白区，下方68%到96%为平整信息区";
         String backgroundPrompt = """
-                生成一张全新的竖版校园活动海报背景，画面比例约3:4，只生成背景，不生成成品海报文字。
-                采用%s。%s。
-                每次使用不同的光影、纹理、抽象元素和空间构图，保持同类视觉语言但不要复制固定背景。
-                背景要精致、有层次、适合手机端发布，同时让后续程序叠加的中文标题和活动信息清楚易读。
-                禁止出现任何中文、英文、字母、数字、伪文字、乱码、Logo、校徽、二维码、网址、电话、
-                水印、边框样机、标题占位符、信息图标或可识别的学校名称。只输出完整无字背景图。
+                创作一张全新的3:4竖版高端校园活动视觉底图，只是供设计师后续排版的背景板，绝不是成品海报。
+                艺术指导：%s。版式约束：%s。
+                采用克制的色彩、真实材质感、细腻光影与清晰空间层次；视觉焦点放在标题留白区外围，
+                不使用廉价素材堆叠、赛博朋克道路网格、发光地球、舞台大屏、建筑招牌或对称模板感。
+                每次改变光线方向、材质组合、抽象形态和局部构图，保持专业系列感但不得复刻固定背景。
+                全图必须完全无字：禁止中文、英文、字母、数字、伪汉字、类似文字的笔画组合、Logo、
+                校徽、二维码、网址、电话、水印、招牌、屏幕UI、标题占位符和任何可阅读符号。
+                留白区不要出现高对比主体。只输出一张完成度高、可直接叠加排版的纯背景图。
                 """.formatted(theme.style(), composition).trim();
 
         return new CampusPosterSpec(
@@ -87,24 +89,29 @@ public class CampusPosterPromptBuilder {
             return new PosterTheme(
                     CampusPosterLayout.CINEMATIC,
                     "运动赛事",
-                    "活力运动视觉：橙色与翠绿色为主色，抽象速度轨迹、开阔校园空间和充满力量的光影");
+                    "高级运动品牌视觉，以炭黑、暖橙和少量酸性绿为主，运动轨迹转化为大尺度抽象切面，"
+                            + "结合磨砂纸张、织物纤维和自然侧光，动感强但画面克制");
         }
         if (containsAny(rawGoal, PERFORMANCE_SIGNALS)) {
             return new PosterTheme(
                     CampusPosterLayout.CINEMATIC,
                     "校园演出",
-                    "校园演出视觉：深紫与暖金为主色，抽象舞台光束、流动声波和艺术笔触，热烈但不浮夸");
+                    "当代文化演出视觉，以墨紫、酒红和哑光金为主，半透明绸缎、柔焦光束、"
+                            + "手工纸纤维和抽象声波形成有呼吸感的层次，艺术但不浮夸");
         }
         if (containsAnyIgnoreCase(rawGoal, TECHNOLOGY_SIGNALS)) {
             return new PosterTheme(
                     CampusPosterLayout.EDITORIAL,
                     "技术分享",
-                    "未来科技视觉：深蓝与电光紫为主色，抽象网格、柔和发光线条和现代校园建筑光影，专业而年轻");
+                    "国际设计杂志式科技视觉，以午夜蓝、群青、银灰和少量青绿色为主，"
+                            + "非对称的半透明玻璃切片、精细微结构、柔和体积光与高级颗粒质感，"
+                            + "现代、理性、年轻，避免俗套霓虹赛博朋克");
         }
         return new PosterTheme(
                 CampusPosterLayout.EDITORIAL,
                 "校园活动",
-                "现代校园视觉：明亮蓝绿配色，简洁几何层次、自然光和清新的校园空间，友好而有组织感");
+                "现代编辑设计视觉，以雾蓝、苔绿、米白和少量暖黄为主，抽象校园空间、"
+                        + "自然日光、柔和纸张肌理和简洁几何层次，清新、可信、有设计感");
     }
 
     private boolean containsAny(String value, List<String> signals) {

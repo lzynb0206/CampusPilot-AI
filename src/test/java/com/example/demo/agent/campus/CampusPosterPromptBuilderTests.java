@@ -39,9 +39,11 @@ class CampusPosterPromptBuilderTests {
         assertEquals("2026年9月20日", spec.date());
         assertEquals("15:30开始", spec.time());
         assertEquals("南京信息工程大学·明德楼", spec.location());
-        assertTrue(spec.backgroundPrompt().contains("未来科技视觉"));
-        assertTrue(spec.backgroundPrompt().contains("只生成背景"));
-        assertTrue(spec.backgroundPrompt().contains("每次使用不同"));
+        assertTrue(spec.backgroundPrompt().contains("国际设计杂志式科技视觉"));
+        assertTrue(spec.backgroundPrompt().contains("供设计师后续排版的背景板"));
+        assertTrue(spec.backgroundPrompt().contains("每次改变"));
+        assertTrue(spec.backgroundPrompt().contains("伪汉字"));
+        assertTrue(spec.backgroundPrompt().contains("避免俗套霓虹赛博朋克"));
         assertFalse(spec.backgroundPrompt().contains("校园AI技术分享会"));
     }
 
@@ -68,7 +70,7 @@ class CampusPosterPromptBuilderTests {
         assertEquals("日期待定", spec.date());
         assertEquals("时间待定", spec.time());
         assertEquals("南京信息工程大学·具体场地待定", spec.location());
-        assertTrue(spec.backgroundPrompt().contains("活力运动视觉"));
+        assertTrue(spec.backgroundPrompt().contains("高级运动品牌视觉"));
         assertFalse(spec.backgroundPrompt().contains("14:00"));
     }
 

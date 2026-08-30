@@ -12,4 +12,7 @@ public class CampusPosterConfig {
     private int canvasWidth = 1080;
     private int canvasHeight = 1440;
     private String logoResourceDirectory = "poster-templates/logos";
+    private boolean backgroundQualityReviewEnabled = true;
+    private int maxBackgroundAttempts = 3;
+    private int minimumBackgroundScore = 72;
 }

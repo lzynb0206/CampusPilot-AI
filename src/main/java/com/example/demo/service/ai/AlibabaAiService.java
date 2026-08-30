@@ -152,16 +152,70 @@ public class AlibabaAiService {
     }
 
     public byte[] generateImage(String prompt) {
-        return generateImage(prompt, config.getImageSize(), true, null);
+        return generateImage(
+                prompt,
+                config.getImageModel(),
+                config.getImageSize(),
+                true,
+                null);
     }
 
     public byte[] generatePosterBackground(String prompt) {
         return generateImage(
                 prompt,
+                config.getPosterImageModel(),
                 config.getPosterImageSize(),
                 false,
                 "中文，英文，字母，数字，文字，伪文字，乱码，标题，占位文字，信息图标，"
                         + "二维码，校徽，品牌Logo，水印，低分辨率，低画质，样机，手机边框，设计软件界面");
+    }
+
+    public PosterBackgroundReview reviewPosterBackground(byte[] imageBytes) {
+        requireApiKey();
+        if (imageBytes == null || imageBytes.length == 0) {
+            throw new IllegalArgumentException("待质检的海报背景不能为空");
+        }
+        String dataUrl = "data:image/png;base64,"
+                + Base64.getEncoder().encodeToString(imageBytes);
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("model", config.getVisionModel());
+        body.put("messages", List.of(
+                Map.of(
+                        "role", "system",
+                        "content", """
+                                你是校园活动海报背景的严格视觉质检员。只检查尚未排版文字的背景图。
+                                请只输出JSON对象，字段为 textDetected、qualityScore、reason。
+                                textDetected为布尔值：只要看到任何中文、英文、字母、数字、Logo、水印、
+                                像文字的乱码、伪汉字或招牌笔画，就必须为true。
+                                qualityScore为0到100的整数，综合评估审美完成度、层次、配色、画面精致度、
+                                标题安全区是否低细节、底部信息区是否干净。廉价霓虹网格、素材堆砌、
+                                过度饱和、明显AI感、中心视觉冲突或背景像未完成草稿都应大幅扣分。
+                                reason用不超过40个中文字符说明最主要问题。不要输出Markdown。
+                                """),
+                Map.of(
+                        "role", "user",
+                        "content", List.of(
+                                Map.of("type", "image_url", "image_url", Map.of("url", dataUrl)),
+                                Map.of("type", "text", "text", "检查这张无字海报背景是否可以进入最终排版。")))
+        ));
+        body.put("response_format", Map.of("type", "json_object"));
+        body.put("enable_thinking", false);
+        body.put("temperature", 0.0);
+
+        String content = chatCompletion(body);
+        try {
+            int start = content.indexOf('{');
+            int end = content.lastIndexOf('}');
+            String json = start >= 0 && end > start
+                    ? content.substring(start, end + 1) : content;
+            JsonNode result = objectMapper.readTree(json);
+            return new PosterBackgroundReview(
+                    result.path("textDetected").asBoolean(true),
+                    result.path("qualityScore").asInt(0),
+                    result.path("reason").asText("视觉模型未说明原因"));
+        } catch (Exception exception) {
+            throw new IllegalStateException("无法解析海报背景质检结果：" + content, exception);
+        }
     }
 
     public byte[] generatePoster(String prompt) {
@@ -170,6 +224,7 @@ public class AlibabaAiService {
 
     private byte[] generateImage(
             String prompt,
+            String model,
             String size,
             boolean promptExtend,
             String negativePrompt) {
@@ -177,12 +232,17 @@ public class AlibabaAiService {
         Map<String, Object> parameters = new LinkedHashMap<>();
         parameters.put("size", size);
         parameters.put("n", 1);
-        parameters.put("prompt_extend", promptExtend);
-        if (StringUtils.hasText(negativePrompt)) {
-            parameters.put("negative_prompt", negativePrompt);
+        parameters.put("watermark", false);
+        if (model != null && model.startsWith("wan2.7-")) {
+            parameters.put("thinking_mode", true);
+        } else {
+            parameters.put("prompt_extend", promptExtend);
+            if (StringUtils.hasText(negativePrompt)) {
+                parameters.put("negative_prompt", negativePrompt);
+            }
         }
         Map<String, Object> body = new LinkedHashMap<>();
-        body.put("model", config.getImageModel());
+        body.put("model", model);
         body.put("input", Map.of("messages", List.of(Map.of(
                 "role", "user",
                 "content", List.of(Map.of("text", prompt))

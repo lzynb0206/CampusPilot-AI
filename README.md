@@ -84,9 +84,11 @@ flowchart TB
     T --> V["Evaluator + selective retry"]
     V --> M["10-section Markdown proposal"]
     M --> POSTER["Structured poster specification"]
-    POSTER --> BG["Qwen-Image text-free background"]
+    POSTER --> BG["Wan 2.7 Pro text-free background"]
+    BG --> QA["Vision text + quality review"]
+    QA -->|"reject and retry"| BG
     POSTER --> LAYOUT["Java layout + exact text + optional logo"]
-    BG --> LAYOUT
+    QA -->|"pass"| LAYOUT
     LAYOUT --> IMG["Final 3:4 PNG poster"]
 
     L --> W["Weather / news / translation / calculator tools"]
@@ -134,7 +136,7 @@ The final proposal contains:
 - publicity and registration drafts;
 - risk controls and an implementation checklist.
 
-After a completed plan is rendered, the poster pipeline extracts only the confirmed event name, date, start time, school, and venue. Qwen-Image generates a fresh text-free background for each request; it never receives the real title or venue and is explicitly prohibited from drawing text, logos, QR codes, or contact details. Java then applies one of two stable layout systems inspired by the supplied references: a cinematic centered-title layout and an editorial left-title layout. It draws the real Chinese text into protected safe areas, automatically wraps long titles and venues, and loads an optional official school logo from the classpath. Missing facts remain visibly marked as `待定` instead of being invented.
+After a completed plan is rendered, the poster pipeline extracts only the confirmed event name, date, start time, school, and venue. Wan 2.7 Image Pro generates a fresh, text-free background for each request; it never receives the real title or venue and is explicitly instructed not to draw text, logos, QR codes, signs, screens, or contact details. Qwen-VL then rejects backgrounds containing real or pseudo text and scores composition quality; failed candidates are regenerated up to the configured limit and are never sent to the user. Java finally applies one of two stable layout systems inspired by the supplied references: a cinematic centered-title layout and an editorial left-title layout. It draws the real Chinese text into protected safe areas, automatically wraps long titles and venues, and loads an optional official school logo from the classpath. Missing facts remain visibly marked as `待定` instead of being invented.
 
 Curated poster layout references can be placed in `src/main/resources/poster-templates/references/`; they guide layout design but are never reused as runtime backgrounds. Official school logos can be placed in `src/main/resources/poster-templates/logos/` using the exact school name as the filename, for example `南京信息工程大学.png`.
 
@@ -153,7 +155,7 @@ Curated poster layout references can be placed in `src/main/resources/poster-tem
 | WeChat integration | `wechat-ilink-sdk` 2.3.3 |
 | Weather | Seniverse current weather and daily forecast APIs |
 | Campus maps | AMap Web Service geocoding, Places 2.0 nearby search, and marker URI links |
-| Event posters | Qwen-Image 2.0 backgrounds plus Java2D deterministic text, layout, and optional-logo composition |
+| Event posters | Wan 2.7 Image Pro backgrounds, Qwen-VL quality review, and Java2D deterministic composition |
 | HTTP | Spring `RestTemplate`, Apache HttpClient 5 connection pool |
 | Serialization | Jackson |
 | Voice pipeline | Node.js 18+, `silk-wasm` 3.7.1, Qwen ASR, CosyVoice TTS |
@@ -277,6 +279,7 @@ Scan it with WeChat and keep the application running. With the default configura
 | `DASHSCOPE_VISION_MODEL` | `qwen3-vl-flash` | Image-understanding model |
 | `DASHSCOPE_IMAGE_MODEL` | `qwen-image-2.0` | Image-generation model |
 | `DASHSCOPE_IMAGE_SIZE` | `1024*1024` | Output size for ordinary image-generation requests |
+| `DASHSCOPE_POSTER_IMAGE_MODEL` | `wan2.7-image-pro` | Dedicated high-quality event-poster background model |
 | `DASHSCOPE_POSTER_IMAGE_SIZE` | `1728*2368` | AI source-background size used before final composition |
 | `DASHSCOPE_ASR_MODEL` | `qwen3-asr-flash` | Speech-recognition model |
 | `DASHSCOPE_TTS_MODEL` | `cosyvoice-v3-flash` | Text-to-speech model |
@@ -294,6 +297,9 @@ Scan it with WeChat and keep the application running. With the default configura
 | `CAMPUS_POSTER_CANVAS_WIDTH` | `1080` | Final composed poster width |
 | `CAMPUS_POSTER_CANVAS_HEIGHT` | `1440` | Final composed poster height |
 | `CAMPUS_POSTER_LOGO_RESOURCE_DIRECTORY` | `poster-templates/logos` | Classpath directory containing optional official school logos |
+| `CAMPUS_POSTER_BACKGROUND_QUALITY_REVIEW_ENABLED` | `true` | Rejects AI backgrounds containing text or failing visual review |
+| `CAMPUS_POSTER_MAX_BACKGROUND_ATTEMPTS` | `3` | Maximum background generations before refusing a low-quality poster |
+| `CAMPUS_POSTER_MINIMUM_BACKGROUND_SCORE` | `72` | Minimum 0–100 visual-review score required before composition |
 | `SILK_SAMPLE_RATE` | `24000` | WAV sample rate used by the SILK decoder |
 | `SILK_DECODE_TIMEOUT_SECONDS` | `30` | Voice decode timeout |
 
@@ -371,6 +377,7 @@ scripts
 - The agent does not reserve venues, make purchases, process payments, or claim that an external action has completed.
 - Map results are treated as unverified candidates; a POI result never implies that the room is available or large enough.
 - The text plan is sent before poster generation; poster errors are isolated and can be retried with `根据方案生成活动海报`.
+- A poster background that still contains pseudo text or fails the minimum quality score is not sent; the bot reports the rejection and allows a retry.
 
 ## Known Limitations
 
